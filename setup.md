@@ -133,13 +133,13 @@ Follow the login URL that Tailscale prints.
 Run this from Windows PowerShell in the repo folder:
 
 ```powershell
-scp -r .\server jkothari@raspberrypi.local:~/localflow-sync/
+scp -r .\server jkothari@raspberrypi.local:~/todolist-sync/
 ```
 
 6. On the Pi, create the Python environment and install the server dependencies:
 
 ```bash
-cd ~/localflow-sync/server
+cd ~/todolist-sync/server
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -148,7 +148,7 @@ pip install -r requirements.txt
 7. Start the sync API:
 
 ```bash
-cd ~/localflow-sync/server
+cd ~/todolist-sync/server
 source .venv/bin/activate
 export LOCALFLOW_TOKEN='jfiweokgerhotrwhtr'
 uvicorn app:app --host 127.0.0.1 --port 8787
@@ -157,7 +157,7 @@ uvicorn app:app --host 127.0.0.1 --port 8787
 Leave this terminal running. The SQLite database will be created automatically at:
 
 ```text
-~/localflow-sync/server/localflow.sqlite3
+~/todolist-sync/server/localflow.sqlite3
 ```
 
 8. In a second SSH terminal, expose the local API privately through Tailscale Serve:
@@ -183,20 +183,20 @@ The manual `uvicorn` command works, but it stops when that SSH terminal closes. 
 1. Create an environment file:
 
 ```bash
-sudo nano /etc/localflow-sync.env
+sudo nano /etc/todolist-sync.env
 ```
 
 Add:
 
 ```bash
 LOCALFLOW_TOKEN=jfiweokgerhotrwhtr
-LOCALFLOW_DB=/home/jkothari/localflow-sync/server/localflow.sqlite3
+LOCALFLOW_DB=/home/jkothari/todolist-sync/server/localflow.sqlite3
 ```
 
 2. Create the service:
 
 ```bash
-sudo nano /etc/systemd/system/localflow-sync.service
+sudo nano /etc/systemd/system/todolist-sync.service
 ```
 
 Add:
@@ -209,9 +209,9 @@ Wants=network-online.target
 
 [Service]
 User=jkothari
-WorkingDirectory=/home/jkothari/localflow-sync/server
-EnvironmentFile=/etc/localflow-sync.env
-ExecStart=/home/jkothari/localflow-sync/server/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8787
+WorkingDirectory=/home/jkothari/todolist-sync/server
+EnvironmentFile=/etc/todolist-sync.env
+ExecStart=/home/jkothari/todolist-sync/server/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8787
 Restart=always
 RestartSec=5
 
@@ -223,8 +223,8 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now localflow-sync
-sudo systemctl status localflow-sync
+sudo systemctl enable --now todolist-sync
+sudo systemctl status todolist-sync
 ```
 
 4. Make sure Tailscale Serve is still pointing at the API:
@@ -248,7 +248,7 @@ If `.local` does not resolve, use the Pi's Tailscale name or IP from the Tailsca
 3. Start the sync API:
 
 ```bash
-cd ~/localflow-sync/server
+cd ~/todolist-sync/server
 source .venv/bin/activate
 export LOCALFLOW_TOKEN='jfiweokgerhotrwhtr'
 uvicorn app:app --host 127.0.0.1 --port 8787
@@ -350,3 +350,210 @@ If Tailscale Serve stops working, rerun:
 sudo tailscale serve --https=443 http://127.0.0.1:8787
 tailscale serve status
 ```
+
+## Scheduled Maintenance & Diagnostics
+
+LocalFlow now includes automatic diagnostics and scheduled maintenance to prevent crashes and diagnose issues when they occur. This section covers setup on the Raspberry Pi.
+
+### Overview
+
+Three components work together:
+
+- **localflow-server.service** - The main sync API with resource limits and automatic restart
+- **localflow-monitor.service** - Continuous monitoring that logs memory, file descriptors, database locks, temperatures, and disk space
+- **maintenance.sh** - Scheduled downtime script that gracefully restarts the server at 4:00 AM and verifies health at 6:00 AM
+- **analyze-crashes.py** - Diagnostic tool to review what was happening before crashes
+
+### Setup on Raspberry Pi
+
+1. Install additional dependencies on the Pi:
+
+```bash
+sudo apt update
+sudo apt install -y jq
+cd ~/todolist-sync/server
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+2. Copy the service files to systemd:
+
+From your Windows machine, copy the new files to the Pi:
+
+```powershell
+scp .\server\localflow-server.service jkothari@raspberrypi.local:~
+scp .\server\localflow-monitor.service jkothari@raspberrypi.local:~
+scp .\server\maintenance.sh jkothari@raspberrypi.local:~
+scp .\server\monitor.py jkothari@raspberrypi.local:~/todolist-sync/server/
+scp .\server\analyze-crashes.py jkothari@raspberrypi.local:~/todolist-sync/server/
+```
+
+3. On the Pi, install the service files:
+
+```bash
+sudo mv ~/localflow-server.service /etc/systemd/system/
+sudo mv ~/localflow-monitor.service /etc/systemd/system/
+sudo mv ~/maintenance.sh /home/jkothari/todolist-sync/server/
+sudo chmod +x /home/jkothari/todolist-sync/server/maintenance.sh
+sudo chmod +x /home/jkothari/todolist-sync/server/analyze-crashes.py
+```
+
+4. Create the log directory:
+
+```bash
+sudo mkdir -p /var/log/localflow
+sudo chown jkothari:jkothari /var/log/localflow
+```
+
+5. Update the service files with your token and username:
+
+```bash
+sudo nano /etc/systemd/system/localflow-server.service
+```
+
+Change:
+- `LOCALFLOW_TOKEN=replace-with-your-token` → your actual token
+- `User=pi` → your username (probably `jkothari`)
+- `/home/pi/todolist-sync/server` → `/home/jkothari/todolist-sync/server`
+
+6. Do the same for localflow-monitor.service:
+
+```bash
+sudo nano /etc/systemd/system/localflow-monitor.service
+```
+
+Change:
+- `User=pi` → your username (probably `jkothari`)
+- `/home/pi/todolist-sync/server` → `/home/jkothari/todolist-sync/server`
+
+7. Reload systemd and start the services:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable localflow-server localflow-monitor
+sudo systemctl start localflow-server localflow-monitor
+```
+
+8. Verify both services are running:
+
+```bash
+sudo systemctl status localflow-server
+sudo systemctl status localflow-monitor
+```
+
+9. Set up cron jobs for scheduled maintenance:
+
+```bash
+crontab -e
+```
+
+Add these lines:
+
+```cron
+# Graceful restart at 4:00 AM every day (cleanup time)
+0 4 * * * /home/jkothari/todolist-sync/server/maintenance.sh restart >> /var/log/localflow/cron.log 2>&1
+
+# Verify server health at 6:00 AM
+0 6 * * * /home/jkothari/todolist-sync/server/maintenance.sh verify >> /var/log/localflow/cron.log 2>&1
+
+# Optional: Full diagnostics report at 8:00 PM for review
+0 20 * * * /home/jkothari/todolist-sync/server/maintenance.sh full-check >> /var/log/localflow/cron.log 2>&1
+```
+
+### Monitoring & Diagnostics
+
+The monitor runs continuously in the background, logging diagnostics every 60 seconds.
+
+#### View Real-Time Logs
+
+```bash
+# Follow the main server logs
+sudo journalctl -u localflow-server -f
+
+# Follow monitor logs
+sudo journalctl -u localflow-monitor -f
+
+# Follow both
+sudo journalctl -u localflow-server -u localflow-monitor -f
+```
+
+#### View Alerts
+
+Recent alerts from the last 24 hours:
+
+```bash
+sudo /home/jkothari/localflow-sync/server/maintenance.sh alerts
+```
+
+#### Run Diagnostics Analysis
+
+Find crashes and review what was happening:
+
+```bash
+python3 /home/jkothari/localflow-sync/server/analyze-crashes.py
+```
+
+Find specific issues:
+
+```bash
+# Memory spikes
+python3 /home/jkothari/localflow-sync/server/analyze-crashes.py --memory-spike
+
+# Database locks
+python3 /home/jketothari/localflow-sync/server/analyze-crashes.py --db-locks
+
+# Disk space issues
+python3 /home/jkothari/localflow-sync/server/analyze-crashes.py --disk
+
+# Temperature issues
+python3 /home/jkothari/localflow-sync/server/analyze-crashes.py --temp
+```
+
+#### Manual Maintenance Commands
+
+Run anytime, outside the 4 AM window:
+
+```bash
+# Graceful restart
+sudo /home/jkothari/localflow-sync/server/maintenance.sh restart
+
+# Check if server is healthy
+sudo /home/jkothari/localflow-sync/server/maintenance.sh verify
+
+# Full diagnostics report
+sudo /home/jkothari/localflow-sync/server/maintenance.sh full-check
+```
+
+### What Gets Logged
+
+The monitor logs every 60 seconds to `/var/log/localflow/diagnostics.jsonl`. Each entry includes:
+
+- **Memory usage** - RSS memory in MB and percentage, with warnings when > 400MB
+- **File descriptors** - Count of open file handles, with warnings when > 900
+- **Database status** - Row count and lock detection
+- **Tailscale connection** - Direct vs relay mode
+- **Disk space** - Used percentage and free GB, warnings when > 80%
+- **CPU temperature** - Celsius, warnings when > 70°C
+
+Alerts are logged to `/var/log/localflow/alerts.log` with timestamps and severity levels (INFO, WARNING, ERROR).
+
+### Resource Limits
+
+The new service limits the uvicorn process to:
+
+- **Memory:** 512MB max (restarts if exceeded)
+- **CPU:** 80% quota
+- **Automatic restart** on OOM (Out Of Memory) condition
+
+### Next Steps
+
+The scheduled restart at 4:00 AM will:
+1. Stop the current server gracefully
+2. Wait 5 seconds for clean shutdown
+3. Start a fresh process (clearing memory and file descriptors)
+4. Wait 10 seconds for startup
+
+At 6:00 AM, it verifies the server came back up and logs diagnostics for you to review later.
+
+If issues keep happening after setup, run the crash analysis to see what was happening before each crash.

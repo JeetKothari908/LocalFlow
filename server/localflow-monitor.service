@@ -1,0 +1,19 @@
+[Unit]
+Description=LocalFlow Diagnostic Monitor
+After=network.target
+PartOf=localflow-server.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/localflow-sync/server
+Environment="LOCALFLOW_DB=/home/pi/localflow-sync/server/localflow.sqlite3"
+ExecStart=/home/pi/localflow-sync/server/.venv/bin/python monitor.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=localflow-monitor
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,29 @@
+[Unit]
+Description=LocalFlow Sync API Server
+After=network.target
+Wants=localflow-monitor.service
+
+[Service]
+Type=notify
+User=pi
+WorkingDirectory=/home/pi/localflow-sync/server
+Environment="LOCALFLOW_TOKEN=replace-with-your-token"
+Environment="LOCALFLOW_DB=/home/pi/localflow-sync/server/localflow.sqlite3"
+ExecStart=/home/pi/localflow-sync/server/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8787
+Restart=always
+RestartSec=5
+StartLimitInterval=300
+StartLimitBurst=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=localflow-server
+TimeoutStartSec=30
+TimeoutStopSec=10
+
+# Resource limits to prevent system-wide hangs
+MemoryAccounting=true
+MemoryMax=512M
+CPUQuota=80%
+
+[Install]
+WantedBy=multi-user.target

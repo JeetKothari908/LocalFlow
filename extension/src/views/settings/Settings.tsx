@@ -21,6 +21,7 @@ import {
 import { useKeyPress } from "../../hooks";
 import { useKey, useSelector } from "../../lib/db/react";
 import Background from "./Background";
+import RevisionHistory from "./RevisionHistory";
 import "./Settings.sass";
 import System from "./System";
 
@@ -42,8 +43,7 @@ const Settings: React.FC = () => {
   const { toggleSettings } = React.useContext(UiContext);
   const [showQuotes, setShowQuotes] = useKey(db, "showQuotes");
   const widgets = useSelector(db, selectWidgets);
-  const [syncSettings, setLocalSyncSettings] =
-    React.useState(getSyncSettings);
+  const [syncSettings, setLocalSyncSettings] = React.useState(getSyncSettings);
   const [syncDraft, setSyncDraft] = React.useState(() => ({
     url: getSyncSettings().url,
     token: getSyncSettings().token,
@@ -215,7 +215,14 @@ const Settings: React.FC = () => {
         <System />
 
         <h2>Widgets</h2>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            cursor: "pointer",
+          }}
+        >
           <input
             type="checkbox"
             checked={showQuotes}
@@ -303,6 +310,7 @@ const Settings: React.FC = () => {
               onKeyDown={commitSyncDraftOnEnter}
             />
           </label>
+          <RevisionHistory settings={syncSettings} />
         </div>
 
         <p style={{ marginBottom: "2rem" }}>

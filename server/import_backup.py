@@ -1,12 +1,9 @@
 import json
-import os
-import sqlite3
 import sys
-import time
 from pathlib import Path
 
+from app import AUTH_TOKEN, DB_PATH, Change, Changes, apply_changes
 
-DB_PATH = Path(os.getenv("LOCALFLOW_DB", "localflow.sqlite3"))
 STORE = "tabliss/config"
 PREFIX = f"{STORE}/"
 
@@ -19,42 +16,21 @@ def main() -> None:
     with backup_path.open("r", encoding="utf-8") as file:
         backup = json.load(file)
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        """
-        create table if not exists kv (
-          store text not null,
-          key text not null,
-          value text,
-          deleted integer not null default 0,
-          updated_at integer not null,
-          primary key (store, key)
-        )
-        """
-    )
-
-    imported = 0
-    now = int(time.time())
+    changes = []
     for full_key, value in backup.items():
         if not full_key.startswith(PREFIX):
             continue
 
         key = full_key[len(PREFIX) :]
-        conn.execute(
-            """
-            insert into kv (store, key, value, deleted, updated_at)
-            values (?, ?, ?, 0, ?)
-            on conflict(store, key) do update set
-              value = excluded.value,
-              deleted = 0,
-              updated_at = excluded.updated_at
-            """,
-            (STORE, key, json.dumps(value), now),
-        )
-        imported += 1
+        changes.append(Change(key=key, value=value))
 
-    conn.commit()
-    print(f"Imported {imported} keys into {DB_PATH}")
+    authorization = f"Bearer {AUTH_TOKEN}" if AUTH_TOKEN else None
+    apply_changes(
+        STORE,
+        Changes(changes=changes, clientId="backup-import"),
+        authorization=authorization,
+    )
+    print(f"Imported {len(changes)} keys into {Path(DB_PATH)} with history")
 
 
 if __name__ == "__main__":

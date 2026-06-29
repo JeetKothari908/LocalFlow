@@ -2,7 +2,9 @@
 
 FastAPI and SQLite sync server for LocalFlow.
 
-The server uses `LOCALFLOW_TOKEN` for auth and `LOCALFLOW_DB` to override the SQLite database path.
+The server uses `LOCALFLOW_TOKEN` for auth, `LOCALFLOW_DB` to override the
+SQLite database path, and `LOCALFLOW_HISTORY_LIMIT` to control how many
+revisions are retained per key (default: `500`; use `0` for unlimited).
 
 ## Quick Start (Manual)
 
@@ -12,7 +14,48 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export LOCALFLOW_TOKEN='replace-with-your-token'
+export LOCALFLOW_HISTORY_LIMIT='500'
 uvicorn app:app --host 127.0.0.1 --port 8787
+```
+
+## Revision History
+
+The server automatically migrates the existing `kv` table on first start:
+
+- `kv.version` tracks the current version of each key.
+- `kv_revisions` contains immutable JSON snapshots.
+- Every existing row is backfilled as a version-one baseline.
+- New clients send `baseVersion`; stale writes receive HTTP `409` instead of
+  replacing newer data.
+- Restoring an old version creates a new revision and never rewrites history.
+
+Back up the database before first deploying the migration. The migration is
+idempotent, so subsequent starts are safe.
+
+List revisions:
+
+```bash
+curl -H "Authorization: Bearer replace-with-your-token" \
+  "http://127.0.0.1:8787/v1/history?store=tabliss%2Fconfig&key=data%2Fdefault-notes"
+```
+
+Restore a revision:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer replace-with-your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"store":"tabliss/config","key":"data/default-notes","version":1}' \
+  http://127.0.0.1:8787/v1/history/restore
+```
+
+Permanently remove older revisions while retaining the current value as a
+baseline:
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer replace-with-your-token" \
+  "http://127.0.0.1:8787/v1/history?store=tabliss%2Fconfig&key=data%2Fdefault-notes"
 ```
 
 ## Automated Setup with Maintenance (Recommended)

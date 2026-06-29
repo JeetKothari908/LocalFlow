@@ -25,6 +25,9 @@ final class SyncStore: ObservableObject {
     private let legacyPlanDataKey = "data/default-plan"
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var versions: [String: Int] = [:]
+    private let clientId = SyncStore.loadClientId()
+    private let syncLock = AsyncLock()
     static let defaultDueTime = "23:59"
 
     init() {
@@ -46,11 +49,13 @@ final class SyncStore: ObservableObject {
     }
 
     func refresh() async {
+        await syncLock.acquire()
         await performSync {
             let snapshot = try await self.requestSnapshot()
             self.apply(snapshot: snapshot)
             self.status = "Synced \(Date.now.formatted(date: .omitted, time: .shortened))"
         }
+        await syncLock.release()
     }
 
     func addTodo(_ contents: String, dueDate: String? = nil, dueTime: String? = nil, repeatRule: RepeatRule? = nil) {
@@ -207,10 +212,24 @@ final class SyncStore: ObservableObject {
     }
 
     private func push<T: Encodable>(value: T, key: String, label: String) async {
+        await syncLock.acquire()
         await performSync {
-            try await self.post(changes: [RemoteChange(key: key, value: try JSONValue(encoding: value, encoder: self.encoder), deleted: false)])
+            let response = try await self.post(
+                changes: [
+                    RemoteChange(
+                        key: key,
+                        value: try JSONValue(encoding: value, encoder: self.encoder),
+                        deleted: false,
+                        baseVersion: self.versions[key]
+                    )
+                ]
+            )
+            if let version = response.versions?[key] {
+                self.versions[key] = version
+            }
             self.status = label
         }
+        await syncLock.release()
     }
 
     private func performSync(_ operation: @escaping () async throws -> Void) async {
@@ -234,16 +253,22 @@ final class SyncStore: ObservableObject {
         return try decoder.decode(RemoteSnapshot.self, from: data)
     }
 
-    private func post(changes: [RemoteChange]) async throws {
+    private func post(changes: [RemoteChange]) async throws -> RemoteWriteResponse {
         var request = URLRequest(url: try endpoint("/changes"))
         request.httpMethod = "POST"
         applyHeaders(to: &request)
-        request.httpBody = try encoder.encode(RemoteSnapshot(changes: changes))
-        let (_, response) = try await URLSession.shared.data(for: request)
+        request.httpBody = try encoder.encode(RemoteSnapshot(changes: changes, clientId: clientId))
+        let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response)
+        return try decoder.decode(RemoteWriteResponse.self, from: data)
     }
 
     private func apply(snapshot: RemoteSnapshot) {
+        for change in snapshot.changes {
+            if let version = change.version {
+                versions[change.key] = version
+            }
+        }
         let values = Dictionary(uniqueKeysWithValues: snapshot.changes.compactMap { change -> (String, JSONValue)? in
             guard change.deleted != true, let value = change.value else { return nil }
             return (change.key, value)
@@ -294,9 +319,22 @@ final class SyncStore: ObservableObject {
 
     private func validate(response: URLResponse) throws {
         guard let http = response as? HTTPURLResponse else { return }
+        if http.statusCode == 409 {
+            throw SyncError.conflict
+        }
         guard 200..<300 ~= http.statusCode else {
             throw URLError(.badServerResponse)
         }
+    }
+
+    private static func loadClientId() -> String {
+        let key = "sync.clientId"
+        if let existing = UserDefaults.standard.string(forKey: key) {
+            return existing
+        }
+        let created = "ios-\(makeId())"
+        UserDefaults.standard.set(created, forKey: key)
+        return created
     }
 
     static func makeId() -> String {
@@ -423,5 +461,39 @@ final class SyncStore: ObservableObject {
     private static func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(type, from: data)
+    }
+}
+
+private enum SyncError: LocalizedError {
+    case conflict
+
+    var errorDescription: String? {
+        switch self {
+        case .conflict:
+            return "This data changed on another device. Refresh before saving again."
+        }
+    }
+}
+
+private actor AsyncLock {
+    private var locked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        if !locked {
+            locked = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            locked = false
+        } else {
+            waiters.removeFirst().resume()
+        }
     }
 }

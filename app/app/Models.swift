@@ -88,12 +88,43 @@ struct PlanData: Codable, Equatable {
 
 struct RemoteSnapshot: Codable {
     var changes: [RemoteChange]
+    var clientId: String?
+
+    init(changes: [RemoteChange], clientId: String? = nil) {
+        self.changes = changes
+        self.clientId = clientId
+    }
 }
 
 struct RemoteChange: Codable {
     var key: String
     var value: JSONValue?
     var deleted: Bool?
+    var version: Int?
+    var updatedAt: Int?
+    var baseVersion: Int?
+
+    init(
+        key: String,
+        value: JSONValue? = nil,
+        deleted: Bool? = nil,
+        version: Int? = nil,
+        updatedAt: Int? = nil,
+        baseVersion: Int? = nil
+    ) {
+        self.key = key
+        self.value = value
+        self.deleted = deleted
+        self.version = version
+        self.updatedAt = updatedAt
+        self.baseVersion = baseVersion
+    }
+}
+
+struct RemoteWriteResponse: Codable {
+    var ok: Bool
+    var versions: [String: Int]?
+    var requestId: String?
 }
 
 enum JSONValue: Codable, Equatable {

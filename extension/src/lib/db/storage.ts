@@ -186,6 +186,25 @@ interface RemoteChange {
   key: string;
   value?: unknown;
   deleted?: boolean;
+  version?: number;
+  updatedAt?: number;
+  baseVersion?: number;
+}
+
+interface RemoteWriteResponse {
+  ok: boolean;
+  versions?: Record<string, number>;
+  requestId?: string;
+}
+
+class RemoteRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly detail?: unknown,
+  ) {
+    super(message);
+  }
 }
 
 const isRemoteChange = (change: unknown): change is RemoteChange =>
@@ -206,11 +225,19 @@ export const remoteSync = async (
   let applyingRemote = false;
   let initialSyncComplete = false;
   const queuedLocalChanges = new Map<string, unknown>();
+  const versions = new Map<string, number>();
+  let remoteWriteQueue = Promise.resolve();
+  const clientId = `extension-${BUILD_TARGET}`;
 
-  const mapError = (message: string, err: unknown) =>
-    new StorageError(`Remote sync: ${name}: ${message}`, {
+  const mapError = (message: string, err: unknown) => {
+    const detail =
+      err instanceof RemoteRequestError && err.status === 409
+        ? " A newer version exists on another device; refresh before retrying."
+        : "";
+    return new StorageError(`Remote sync: ${name}: ${message}.${detail}`, {
       cause: err instanceof Error ? err : undefined,
     });
+  };
   const storePath = name.split("/").map(encodeURIComponent).join("/");
 
   const headers: Record<string, string> = {
@@ -228,41 +255,72 @@ export const remoteSync = async (
       },
     });
 
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    return res.json();
+    const payload = await res.json().catch(() => undefined);
+    if (!res.ok)
+      throw new RemoteRequestError(
+        `${res.status} ${res.statusText}`,
+        res.status,
+        payload,
+      );
+    return payload as T;
   };
 
-  const pushChanges = (changes: Iterable<DB.Change>) => {
+  const postChanges = async (changes: RemoteChange[]): Promise<void> => {
     if (!active) return;
+    if (changes.length === 0) return;
 
-    const body = {
-      changes: Array.from(changes).map(([key, value]) =>
-        value === undefined ? { key, deleted: true } : { key, value },
-      ),
-    };
-    if (body.changes.length === 0) return;
+    console.info("[todo-sync] pushing local changes:", changes.length);
 
-    console.info("[todo-sync] pushing local changes:", body.changes.length);
-
-    request(`/v1/stores/${storePath}/changes`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }).catch((error) =>
-      Stream.publish(errors, mapError("Cannot push local changes", error)),
+    const response = await request<RemoteWriteResponse>(
+      `/v1/stores/${storePath}/changes`,
+      {
+        method: "POST",
+        body: JSON.stringify({ changes, clientId }),
+      },
     );
+
+    for (const [key, version] of Object.entries(response.versions || {}))
+      versions.set(key, version);
+  };
+
+  const prepareChanges = (changes: Iterable<DB.Change>): RemoteChange[] =>
+    Array.from(changes).map(([key, value]) => {
+      const change: RemoteChange =
+        value === undefined ? { key, deleted: true } : { key, value };
+      const baseVersion = versions.get(key);
+      if (baseVersion !== undefined) change.baseVersion = baseVersion;
+      return change;
+    });
+
+  const pushChanges = (changes: Iterable<DB.Change>): Promise<void> =>
+    postChanges(prepareChanges(changes));
+
+  const enqueueChanges = (changes: Iterable<DB.Change>): void => {
+    const pending = Array.from(changes);
+    if (pending.length === 0) return;
+
+    // Build baseVersion only after earlier writes finish so rapid local edits
+    // use the version returned by the preceding request.
+    const write = remoteWriteQueue.then(() =>
+      postChanges(prepareChanges(pending)),
+    );
+    remoteWriteQueue = write.catch((error) => {
+      Stream.publish(errors, mapError("Cannot push local changes", error));
+    });
   };
 
   const runInitialSync = async (): Promise<void> => {
     console.info("[todo-sync] starting remote sync:", baseUrl);
-    const snapshot = await request<RemoteSnapshot>(
-      `/v1/stores/${storePath}`,
-    );
+    const snapshot = await request<RemoteSnapshot>(`/v1/stores/${storePath}`);
     if (!active) return;
 
     const remoteChanges = Array.isArray(snapshot.changes)
       ? snapshot.changes.filter(isRemoteChange)
       : [];
     console.info("[todo-sync] remote changes:", remoteChanges.length);
+    for (const change of remoteChanges)
+      if (typeof change.version === "number")
+        versions.set(change.key, change.version);
 
     const legacyIosPlanWidgetRecord = remoteChanges.find(
       (change) =>
@@ -279,7 +337,10 @@ export const remoteSync = async (
       : [];
 
     const snapshotChanges = remoteChanges.filter(
-      (change) => !legacyIosWidgetDeletions.some((deletion) => deletion.key === change.key),
+      (change) =>
+        !legacyIosWidgetDeletions.some(
+          (deletion) => deletion.key === change.key,
+        ),
     );
 
     if (snapshotChanges.length === 0) {
@@ -288,12 +349,7 @@ export const remoteSync = async (
         if (value !== undefined) seedChanges.push({ key, value });
       }
 
-      await request(`/v1/stores/${storePath}/changes`, {
-        method: "POST",
-        body: JSON.stringify({
-          changes: seedChanges,
-        }),
-      });
+      await postChanges(seedChanges);
       if (!active) return;
 
       console.info("[todo-sync] seeded remote changes:", seedChanges.length);
@@ -309,12 +365,12 @@ export const remoteSync = async (
     }
 
     if (legacyIosWidgetDeletions.length > 0) {
-      await request(`/v1/stores/${storePath}/changes`, {
-        method: "POST",
-        body: JSON.stringify({
-          changes: legacyIosWidgetDeletions,
-        }),
-      });
+      await postChanges(
+        legacyIosWidgetDeletions.map((change) => ({
+          ...change,
+          baseVersion: versions.get(change.key),
+        })),
+      );
       if (!active) return;
 
       console.info(
@@ -323,15 +379,22 @@ export const remoteSync = async (
       );
     }
 
+    // Keep startup edits behind the initial snapshot. Changes that arrive
+    // while a queued batch is being written are collected for the next pass.
+    while (queuedLocalChanges.size > 0) {
+      const pending = Array.from(queuedLocalChanges);
+      queuedLocalChanges.clear();
+      await pushChanges(pending);
+    }
     initialSyncComplete = true;
-    pushChanges(queuedLocalChanges);
-    queuedLocalChanges.clear();
   };
 
   runInitialSync().catch((error) => {
     applyingRemote = false;
-    initialSyncComplete = true;
     if (!active) return;
+    // Without a snapshot we do not know the remote base versions. Keep all
+    // edits local rather than sending an unguarded overwrite.
+    active = false;
 
     const syncError = mapError("Cannot sync initial snapshot", error);
     console.error(syncError);
@@ -348,7 +411,7 @@ export const remoteSync = async (
         return;
       }
 
-      pushChanges(changes);
+      enqueueChanges(changes);
     }, remoteSyncBatchTimeout),
   );
 

@@ -6,6 +6,7 @@
 //
 
 import XCTest
+@testable import app
 
 final class appTests: XCTestCase {
 
@@ -17,12 +18,30 @@ final class appTests: XCTestCase {
         // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // Any test you write for XCTest can be annotated as throws and async.
-        // Mark your test throws to produce an unexpected failure when your test encounters an uncaught error.
-        // Mark your test async to allow awaiting for asynchronous code to complete. Check the results with assertions afterwards.
+    func testRemoteSnapshotDecodesVersionMetadata() throws {
+        let data = Data(
+            """
+            {"changes":[{"key":"data/default-todo","value":{"items":[]},"version":7,"updatedAt":123}]}
+            """.utf8
+        )
+        let snapshot = try JSONDecoder().decode(RemoteSnapshot.self, from: data)
+
+        XCTAssertEqual(snapshot.changes.first?.key, "data/default-todo")
+        XCTAssertEqual(snapshot.changes.first?.version, 7)
+        XCTAssertEqual(snapshot.changes.first?.updatedAt, 123)
+    }
+
+    func testRemoteWriteResponseDecodesVersions() throws {
+        let data = Data(
+            """
+            {"ok":true,"versions":{"data/default-notes":4},"requestId":"request-1"}
+            """.utf8
+        )
+        let response = try JSONDecoder().decode(RemoteWriteResponse.self, from: data)
+
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.versions?["data/default-notes"], 4)
+        XCTAssertEqual(response.requestId, "request-1")
     }
 
     func testPerformanceExample() throws {

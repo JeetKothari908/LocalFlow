@@ -4,6 +4,7 @@ import { ErrorContext } from "../../contexts/error";
 import { UiContext } from "../../contexts/ui";
 import { useFormatMessages, useKeyPress } from "../../hooks";
 import { Icon } from "../shared";
+import SyncRecovery from "./SyncRecovery";
 import "./Overlay.sass";
 
 const messages = defineMessages({
@@ -33,10 +34,18 @@ const Overlay: React.FC = () => {
   useKeyPress(toggleSettings, ["s"]);
 
   return (
-    <div className="Overlay">
-      <a onClick={toggleSettings} title={`${translated.settingsHint} (S)`}>
+    <div className="SettingsBar Overlay" role="toolbar" aria-label="Settings bar">
+      <button
+        type="button"
+        className="settings-trigger"
+        onClick={toggleSettings}
+        title={`${translated.settingsHint} (S)`}
+        aria-label={translated.settingsHint}
+      >
         <Icon name="settings" />
-      </a>
+      </button>
+
+      <SyncRecovery />
 
       {errors.length > 0 ? (
         <a onClick={toggleErrors} title={translated.errorHint}>

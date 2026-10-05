@@ -1,0 +1,160 @@
+.Dashboard .SyncRecovery
+    position: relative
+    flex: 0 0 auto
+    color: #252a32
+    text-align: left
+    font-size: 12px
+    line-height: 1.4
+
+    button
+        font: inherit
+        color: inherit
+        background: #fff
+        border: 1px solid #d9dfe7
+        border-radius: 6px
+        padding: 6px 8px
+        cursor: pointer
+
+        &:hover
+            background: #edf1f6
+
+        &:disabled
+            opacity: .5
+            cursor: default
+
+    button:focus-visible, summary:focus-visible
+        outline: 2px solid #346bdd
+        outline-offset: -2px
+
+    header
+        display: flex
+        align-items: center
+
+    .recovery-heading
+        display: flex
+        align-items: center
+        gap: 6px
+        max-width: calc(100vw - 60px)
+        padding: 5px 9px
+        background: #fef3c7
+        border: 1px solid #f2cd68
+        text-align: left
+        font-size: 12px
+        font-weight: 600
+        white-space: nowrap
+
+        &:hover
+            background: #fde68a
+
+    .recovery-content
+        position: absolute
+        z-index: 1
+        top: calc(100% + 10px)
+        left: 0
+        width: min(460px, calc(100vw - 60px))
+        max-height: min(320px, calc(100dvh - var(--settings-bar-height) - 12px))
+        padding: 10px 12px 12px
+        overflow: auto
+        min-height: 0
+        scrollbar-width: thin
+        overscroll-behavior: contain
+        background: rgba(248, 250, 252, .98)
+        border: 1px solid #dce3ed
+        border-radius: 12px
+        box-shadow: 0 8px 28px rgba(0, 0, 0, .16)
+
+
+    p
+        margin: 6px 0
+
+    summary
+        cursor: pointer
+        overflow-wrap: anywhere
+
+    .recovery-record
+        border-top: 1px solid #dce3ed
+        padding: 7px 0
+
+        > summary
+            font-weight: 600
+            font-size: 13px
+
+            small
+                margin-left: 6px
+                font-weight: 400
+                color: #657083
+
+    .recovery-record-key
+        overflow-wrap: anywhere
+        color: #657083
+
+    .recovery-copy-summary
+        display: grid
+        grid-template-columns: 80px minmax(0, 1fr)
+        gap: 3px 8px
+        margin: 8px 0
+
+        dt
+            font-weight: 600
+
+        dd
+            margin: 0
+            overflow-wrap: anywhere
+
+    .recovery-difference-group, .recovery-raw-copies, .recovery-conflict-paths
+        margin: 7px 0
+        padding: 7px
+        border: 1px solid #dce3ed
+        border-radius: 6px
+
+    .recovery-table-scroll
+        overflow-x: auto
+
+    table
+        width: 100%
+        border-collapse: collapse
+        margin-top: 8px
+        font-size: 11px
+
+    th, td
+        vertical-align: top
+        text-align: left
+        border-top: 1px solid #dce3ed
+        padding: 6px
+        min-width: 105px
+
+    tbody th
+        font-weight: 400
+
+        .recovery-field-name
+            display: block
+            margin-bottom: 4px
+
+        small
+            display: block
+            margin-top: 4px
+            color: #657083
+
+    code
+        font-size: 11px
+        overflow-wrap: anywhere
+
+    pre
+        margin: 0
+        white-space: pre-wrap
+        overflow-wrap: anywhere
+        font-size: 11px
+        font-weight: 400
+
+    h4
+        font-size: 12px
+        margin: 10px 0 4px
+
+    .recovery-actions
+        display: flex
+        flex-wrap: wrap
+        gap: 6px
+        margin-top: 12px
+
+    .recovery-error
+        color: #a32931

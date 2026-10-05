@@ -104,7 +104,7 @@ const Settings: React.FC = () => {
     widgets.find(
       (widget) =>
         sideFeatures.some((feature) => feature.key === widget.key) &&
-        widget.display.position === sidePositions[side],
+        widget.display.position.endsWith(side === "left" ? "Left" : "Right"),
     )?.key ?? "";
 
   const setSideFeature = (side: Side, nextKey: "" | SideFeatureKey) => {
@@ -123,7 +123,9 @@ const Settings: React.FC = () => {
       .filter(
         (widget) =>
           sideFeatures.some((feature) => feature.key === widget.key) &&
-          widget.display.position === position &&
+          widget.display.position.endsWith(
+            side === "left" ? "Left" : "Right",
+          ) &&
           widget.key !== nextKey,
       )
       .forEach((widget) => removeWidget(widget.id));
@@ -236,7 +238,7 @@ const Settings: React.FC = () => {
             const otherValue = getSideFeature(otherSide);
             return (
               <label key={side}>
-                {side === "left" ? "Left side" : "Right side"}
+                {side === "left" ? "Left panel" : "Right panel"}
                 <select
                   value={getSideFeature(side)}
                   onChange={(event) =>

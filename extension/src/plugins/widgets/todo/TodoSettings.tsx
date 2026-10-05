@@ -2,13 +2,15 @@ import React, { FC, useState } from "react";
 import { nanoid } from "nanoid";
 
 import { Props, defaultData, CustomList } from "./types";
+import { deleteCustomList, normalizeTaskData } from "./tasks";
 
-const TodoSettings: FC<Props> = ({ data = defaultData, setData }) => {
+const TodoSettings: FC<Props> = ({ data: rawData = defaultData, setData }) => {
+  const data = normalizeTaskData(rawData);
   const [newListName, setNewListName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
-  const customLists = data.customLists ?? [];
+  const customLists = (data.customLists ?? []).filter((list) => !list.deletedAt);
 
   const addList = () => {
     const trimmed = newListName.trim();
@@ -19,10 +21,7 @@ const TodoSettings: FC<Props> = ({ data = defaultData, setData }) => {
   };
 
   const removeList = (id: string) => {
-    setData({
-      ...data,
-      customLists: customLists.filter((l) => l.id !== id),
-    });
+    setData(deleteCustomList(data, id));
   };
 
   const startEdit = (list: CustomList) => {
@@ -48,25 +47,7 @@ const TodoSettings: FC<Props> = ({ data = defaultData, setData }) => {
 
   return (
     <div className="SearchSettings">
-      <label>
-        Tasks to show
-        <input
-          type="number"
-          min="0"
-          onChange={(event) => {
-            const raw = event.target.value;
-            if (raw === "") {
-              setData({ ...data, show: defaultData.show });
-              return;
-            }
-            const parsed = Number(raw);
-            if (!Number.isFinite(parsed)) return;
-            setData({ ...data, show: Math.max(0, Math.floor(parsed)) });
-          }}
-          placeholder="Number of todo items to show"
-          value={data.show}
-        />
-      </label>
+      <p>Lists organize top level tasks and their subtasks. Due Today includes tasks from every list and project.</p>
 
       <label>
         New task keybind
@@ -83,7 +64,7 @@ const TodoSettings: FC<Props> = ({ data = defaultData, setData }) => {
       <div style={{ marginTop: 16 }}>
         <p style={{ fontWeight: 600, marginBottom: 8 }}>Lists</p>
 
-        {[{ name: "Due Today" }, { name: "Inbox" }, { name: "Finished" }].map(
+        {[{ name: "Due Today" }, { name: "Inbox" }, { name: "Finished" }, { name: "Trash" }].map(
           (perm) => (
             <div
               key={perm.name}

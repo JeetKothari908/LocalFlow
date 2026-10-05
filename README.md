@@ -20,7 +20,7 @@ The project has these main parts:
 
 At a data level, the browser extension and iOS app share the same JSON records in the `tabliss/config` store:
 
-- `data/default-todo` for todo items, due dates/times, repeat rules, custom lists, completion, and dismissed state.
+- `data/default-todo` for recursive tasks, dependencies, schedules, custom lists, recurrence history, activity, and recoverable trash.
 - `data/default-notes` for notes and note folders.
 - `data/default-plan-of-day` for day-keyed plan text.
 
@@ -33,12 +33,13 @@ The sync server exposes:
 ## Features
 
 - Momentum-style new-tab todo dashboard.
-- Todos with due dates, due times, overdue styling, custom lists, completed/finished state, and repeat rules.
+- Tasks nested to any depth, with projects represented by top level tasks, custom lists, global Due Today, metadata, and recoverable trash.
+- Task dependencies, outline editing, dependency graphs, timeline planning, schedule previews, activity history, and recurring task or branch occurrences.
 - Notes widget with note/folder data that syncs across clients.
 - Plan-of-day widget for date-specific planning.
 - Customizable LocalFlow widgets and backgrounds.
 - Optional private sync through a Raspberry Pi, SQLite, and Tailscale Serve.
-- SwiftUI iOS client with tabs for Todos, Notes, Plan, and Alerts.
+- SwiftUI iOS client with tabs for Tasks, Notes, Plan, and Alerts.
 - Local iOS notification groups for todo reminders.
 
 ## Setup
@@ -55,8 +56,9 @@ All setup instructions live in [setup.md](setup.md), including:
 
 | File | Purpose |
 |---|---|
-| `extension/src/plugins/widgets/todo-plus/TodoPlus.tsx` | Main extension todo UI: panels, due date/time controls, repeats, custom lists, sorting, and rendering. |
-| `extension/src/plugins/widgets/todo/reducer.ts` | Todo state transitions and data behavior. |
+| `extension/src/plugins/widgets/todo-plus/TaskDashboard.tsx` | Daily task dashboard, project lists, search, recovery, and workspace navigation. |
+| `extension/src/plugins/widgets/todo-plus/TaskWorkspace.tsx` | Recursive task workspace, metadata, outline editing, schedule shifts, and planning views. |
+| `extension/src/plugins/widgets/todo/tasks.ts` | Task migration, hierarchy, dependencies, completion, trash, recurrence, and planning behavior. |
 | `extension/src/plugins/widgets/notes/Notes.tsx` | Notes widget UI. |
 | `extension/src/plugins/widgets/planOfDay/PlanOfDay.tsx` | Plan-of-day widget UI. |
 | `extension/src/lib/db/storage.ts` | Local storage and remote sync plumbing. |
@@ -64,7 +66,8 @@ All setup instructions live in [setup.md](setup.md), including:
 | `server/app.py` | FastAPI sync API and SQLite persistence. |
 | `server/import_backup.py` | Imports an exported extension storage backup into the server database. |
 | `app/app/SyncStore.swift` | iOS sync, caching, and shared data model mapping. |
-| `app/app/Models.swift` | Swift models for todos, notes, plans, and remote changes. |
+| `app/app/Models.swift` | Swift models for tasks, dependencies, occurrences, notes, plans, and remote changes. |
+| `app/app/TaskGraph.swift` | Swift task migration and hierarchy, dependency, completion, recurrence, and planning rules. |
 | `app/app/TodoNotificationStore.swift` | Local iOS notification scheduling for todo reminders. |
 
 ## Privacy
@@ -75,7 +78,7 @@ This fork also supports optional private sync. When sync is configured, todos, n
 
 Stored app data can include:
 
-- Todo text, due dates, due times, repeat schedules, completion state, and custom lists.
+- Task text and metadata, hierarchy, dependencies, dates, recurrence history, lifecycle state, and custom lists.
 - Notes and note folders.
 - Plan-of-day text.
 - Extension settings such as background, language, time zone, and widget configuration.
@@ -84,6 +87,7 @@ You can delete local extension data by resetting settings in the extension or un
 
 ## More Docs
 
+- [Recursive tasks, migration, sync recovery, and validation](docs/tasks.md)
 - [Raspberry Pi sync setup and recovery](setup.md)
 - [Sync server notes](server/README.md)
 - [Extension docs](docs/extension.md)

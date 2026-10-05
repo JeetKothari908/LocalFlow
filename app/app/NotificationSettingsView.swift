@@ -3,7 +3,7 @@ import UserNotifications
 
 struct NotificationSettingsView: View {
     @EnvironmentObject private var store: SyncStore
-    @StateObject private var notificationStore = TodoNotificationStore()
+    @EnvironmentObject private var notificationStore: TodoNotificationStore
     @State private var editingGroup: TodoNotificationGroup?
 
     var body: some View {
@@ -483,5 +483,6 @@ private struct SpecificTodoPicker: View {
     NavigationStack {
         NotificationSettingsView()
             .environmentObject(SyncStore())
+            .environmentObject(TodoNotificationStore())
     }
 }

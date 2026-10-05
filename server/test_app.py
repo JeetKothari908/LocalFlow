@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -18,7 +19,7 @@ class RevisionHistoryTests(unittest.TestCase):
         sync_app.HISTORY_LIMIT = 500
 
         # Reproduce the pre-history schema to exercise the real migration.
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute(
                 """
                 create table kv (
@@ -43,7 +44,7 @@ class RevisionHistoryTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def revisions(self, key: str = "data/default-todo") -> list[sqlite3.Row]:
-        with sync_app.connect() as conn:
+        with closing(sync_app.connect()) as conn:
             return conn.execute(
                 """
                 select * from kv_revisions
@@ -54,7 +55,7 @@ class RevisionHistoryTests(unittest.TestCase):
             ).fetchall()
 
     def test_migration_adds_version_and_backfills_baseline(self) -> None:
-        with sync_app.connect() as conn:
+        with closing(sync_app.connect()) as conn:
             columns = {
                 row[1] for row in conn.execute("pragma table_info(kv)").fetchall()
             }

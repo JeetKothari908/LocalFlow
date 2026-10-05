@@ -4,3 +4,4 @@
 /server/.venv/
 /extension/dist/
 /extension/node_modules/
+.code-graph/

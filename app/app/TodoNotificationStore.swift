@@ -16,6 +16,8 @@ final class TodoNotificationStore: ObservableObject {
     private let identifierPrefix = "todo-notification"
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var notificationTasks: [TodoItem] = []
+    private var scheduleGeneration = 0
 
     init() {
         load()
@@ -74,15 +76,26 @@ final class TodoNotificationStore: ObservableObject {
     }
 
     func scheduleAll(todos: [TodoItem]) async {
-        await cancelAll()
+        UserDefaults.standard.set(true, forKey: "todo.notifications.autoSchedule")
+        scheduleGeneration += 1
+        let generation = scheduleGeneration
+        await removeAllRequests()
+        guard generation == scheduleGeneration else { return }
         for group in groups where group.enabled {
-            await schedule(group: group, todos: todos)
+            guard generation == scheduleGeneration else { return }
+            await schedule(group: group, todos: todos, generation: generation)
         }
         await refreshStatus()
         status = "Scheduled \(pendingCount) notifications"
     }
 
-    func schedule(group: TodoNotificationGroup, todos: [TodoItem]) async {
+    func rescheduleIfEnabled(todos: [TodoItem]) async {
+        guard UserDefaults.standard.bool(forKey: "todo.notifications.autoSchedule") else { return }
+        await scheduleAll(todos: todos)
+    }
+
+    func schedule(group: TodoNotificationGroup, todos: [TodoItem], generation: Int? = nil) async {
+        notificationTasks = todos
         await removeScheduledNotifications(groupId: group.id)
         guard authorizationStatus == .authorized || authorizationStatus == .provisional || authorizationStatus == .ephemeral else {
             status = "Notification permission needed"
@@ -104,6 +117,7 @@ final class TodoNotificationStore: ObservableObject {
                 return
             }
             for request in requests {
+                if let generation, generation != scheduleGeneration { return }
                 try await UNUserNotificationCenter.current().add(request)
             }
             await refreshStatus()
@@ -114,6 +128,12 @@ final class TodoNotificationStore: ObservableObject {
     }
 
     func cancelAll() async {
+        UserDefaults.standard.set(false, forKey: "todo.notifications.autoSchedule")
+        scheduleGeneration += 1
+        await removeAllRequests()
+    }
+
+    private func removeAllRequests() async {
         let center = UNUserNotificationCenter.current()
         let requests = await center.pendingNotificationRequests()
         let ids = requests
@@ -125,6 +145,7 @@ final class TodoNotificationStore: ObservableObject {
     }
 
     func sendTest(group: TodoNotificationGroup, todos: [TodoItem]) async {
+        notificationTasks = todos
         guard authorizationStatus == .authorized || authorizationStatus == .provisional || authorizationStatus == .ephemeral else {
             status = "Notification permission needed"
             return
@@ -152,10 +173,14 @@ final class TodoNotificationStore: ObservableObject {
     }
 
     static func matchingTodos(for group: TodoNotificationGroup, todos: [TodoItem]) -> [TodoItem] {
-        todos
+        var data = TodoData(); data.items = todos
+        return todos
             .filter { todo in
-                if todo.dismissed == true && !group.includeDismissed { return false }
-                if todo.completed && !group.includeCompleted { return false }
+                let ancestry = [todo] + TaskGraph.ancestors(data, todo.id)
+                if ancestry.contains(where: { $0.deletedAt != nil || $0.isCanceled }) { return false }
+                if ancestry.contains(where: { $0.dismissed == true || $0.archivedAt != nil }) && !group.includeDismissed { return false }
+                if todo.isDone && !group.includeCompleted { return false }
+                if group.filter == .inbox { return TaskGraph.root(data, todo.id)?.listId == nil }
                 return Self.matchesFilter(todo, group: group)
             }
             .sorted { lhs, rhs in
@@ -205,6 +230,8 @@ final class TodoNotificationStore: ObservableObject {
         switch rule.type {
         case "daily":
             return true
+        case "monthly":
+            return TaskGraph.firstRepeatDate(rule) == TaskGraph.dateKey(Date())
         case "weekly", "custom":
             return (rule.days ?? []).contains(weekday)
         default:
@@ -279,6 +306,13 @@ final class TodoNotificationStore: ObservableObject {
         let content = UNMutableNotificationContent()
         content.sound = .default
         content.title = "\(group.titlePrefix): \(group.name)"
+        var data = TodoData(); data.items = notificationTasks
+        content.userInfo = ["taskIds": todos.map(\.id)]
+        if let task = todos.first {
+            content.userInfo["taskId"] = task.id
+            content.userInfo["url"] = "localflow://task/\(task.id)"
+            if let root = TaskGraph.root(data, task.id) { content.subtitle = root.contents }
+        }
 
         switch group.bodyStyle {
         case .compact:

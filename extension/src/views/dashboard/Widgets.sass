@@ -1,4 +1,6 @@
-.Widgets
+.Dashboard .Widgets
+    top: var(--settings-bar-height)
+    height: calc(100% - var(--settings-bar-height))
     padding: 0
     text-align: center
     pointer-events: none
@@ -19,3 +21,115 @@
     .weight-override
         h1, h2, h3, h4
             font-weight: inherit
+
+    .CenterPanels
+        position: absolute
+        inset: 0 var(--right-panel-width) 0 var(--left-panel-width)
+        overflow: hidden
+        container-type: inline-size
+
+        > .Slot
+            max-width: 100%
+
+        .Search
+            width: min(420px, 90cqw)
+
+        .Time h1
+            font-size: clamp(24px, 14cqw, 4em)
+
+    .SidePanel
+        position: absolute
+        top: 0
+        bottom: 0
+        width: var(--side-panel-width)
+        container-type: inline-size
+        overflow: auto
+        pointer-events: auto
+        overscroll-behavior: contain
+        scrollbar-width: thin
+        background: transparent
+        border: 0
+        box-sizing: border-box
+
+        &.side-panel-left
+            left: 0
+
+        &.side-panel-right
+            right: 0
+
+        .side-panel-slots
+            min-height: 100%
+            display: flex
+            flex-direction: column
+            gap: 20px
+            padding: 16px 12px
+            box-sizing: border-box
+
+        .Slot
+            position: static
+            transform: none
+            flex-shrink: 0
+            min-width: 0
+
+            > .Widget
+                margin: 0
+                min-width: 0
+
+                + .Widget
+                    margin-top: 20px
+
+            &.middleLeft, &.middleRight
+                margin-block: auto
+
+            &.bottomLeft, &.bottomRight
+                margin-top: auto
+
+        .TodoPlus, .Notes, .PlanOfDay
+            width: 100%
+            max-width: none
+            margin-top: 0
+
+.Dashboard.light .SidePanel .TodoPlus .task-status
+    color: #435268
+
+@media (max-width: 900px)
+    .Widgets .SidePanel
+        .side-panel-slots
+            padding: 12px 8px
+
+        .TodoPlus .panel
+            padding: 10px 8px
+
+        .TodoPlus .panel-title, .TodoPlus .list-select
+            font-size: 17px
+            min-width: 0
+
+        .TodoPlus .panel header
+            gap: 3px
+
+        .TodoPlus .task-composer
+            flex-wrap: wrap
+
+@container (max-width: 240px)
+    .SidePanel
+        .TodoPlus .task-row
+            grid-template-columns: 0 22px minmax(0, 1fr) 12px
+            gap: 4px
+
+        .TodoPlus .task-meta
+            font-size: 10px
+
+        .Notes .toolbar
+            flex-wrap: wrap
+            justify-content: flex-end
+            padding: 10px 8px
+
+            button:first-child
+                flex-basis: 100%
+                font-size: 18px
+
+        .PlanOfDay .header
+            flex-wrap: wrap
+
+        .PlanOfDay .title, .PlanOfDay .date-picker
+            font-size: 16px

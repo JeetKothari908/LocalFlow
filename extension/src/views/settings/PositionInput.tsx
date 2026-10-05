@@ -57,6 +57,11 @@ const PositionInput: React.FC<Props> = ({ value, onChange }) => (
           key={position.value}
           onClick={() => onChange(position.value)}
           primary={value === position.value}
+          title={position.value.replace(
+            /(top|middle|bottom)(Left|Right|Centre)/,
+            (_, vertical, horizontal) =>
+              `${horizontal === "Centre" ? "Center" : `${horizontal} panel`} · ${vertical}`,
+          )}
         >
           <Icon name={position.icon} />
         </IconButton>

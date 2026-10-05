@@ -11,6 +11,16 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from todo_schema import (
+    TODO_KEY,
+    TODO_STORE,
+    MergeConflict,
+    TodoValidationError,
+    is_recursive_todo,
+    three_way_merge,
+    validate_todo,
+)
+
 
 DB_PATH = os.getenv("LOCALFLOW_DB", "localflow.sqlite3")
 AUTH_TOKEN = os.getenv("LOCALFLOW_TOKEN", "")
@@ -54,6 +64,16 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
             """
         )
         _ensure_column(conn, "kv", "version", "integer not null default 1")
+        _ensure_column(conn, "kv", "required_todo_schema", "integer not null default 0")
+        existing_todo = conn.execute(
+            "select value, deleted, required_todo_schema from kv where store = ? and key = ? and required_todo_schema < 2",
+            (TODO_STORE, TODO_KEY),
+        ).fetchone()
+        if existing_todo and not existing_todo["deleted"] and is_recursive_todo(json.loads(existing_todo["value"])):
+            conn.execute(
+                "update kv set required_todo_schema = 2 where store = ? and key = ? and required_todo_schema < 2",
+                (TODO_STORE, TODO_KEY),
+            )
 
         conn.execute(
             """
@@ -121,6 +141,8 @@ class Change(BaseModel):
     value: Any | None = None
     deleted: bool = False
     baseVersion: int | None = None
+    baseValue: Any | None = None
+    todoSchemaVersion: int | None = None
 
 
 class Changes(BaseModel):
@@ -135,6 +157,7 @@ class RestoreRevision(BaseModel):
     version: int
     baseVersion: int | None = None
     clientId: str | None = None
+    todoSchemaVersion: int | None = None
 
 
 def _serialized_value(change: Change) -> str | None:
@@ -189,6 +212,7 @@ def _write_changes(
     request_id: str,
     operation: str = "write",
     restored_from: dict[str, int] | None = None,
+    merged_changes: list[dict[str, Any]] | None = None,
 ) -> dict[str, int]:
     if len({change.key for change in changes}) != len(changes):
         raise HTTPException(status_code=400, detail="Duplicate keys in change batch")
@@ -200,12 +224,46 @@ def _write_changes(
     for change in changes:
         current = conn.execute(
             """
-            select value, deleted, version
+            select value, deleted, version, required_todo_schema
             from kv where store = ? and key = ?
             """,
             (store, change.key),
         ).fetchone()
         current_version = int(current["version"]) if current else 0
+        current_value = (
+            json.loads(current["value"])
+            if current and not current["deleted"] else None
+        )
+        is_todo = store == TODO_STORE and change.key == TODO_KEY
+        if is_todo and current and (
+            is_recursive_todo(current_value) or current["required_todo_schema"] >= 2
+        ):
+            if (change.deleted and change.todoSchemaVersion != 2) or (
+                not change.deleted and not is_recursive_todo(change.value)
+            ):
+                raise HTTPException(
+                    status_code=428,
+                    detail={
+                        "message": "This todo document uses recursive tasks. Update this client before writing or deleting it; older formats cannot replace it.",
+                        "key": change.key,
+                        "requiredTodoSchemaVersion": 2,
+                        "currentVersion": current_version,
+                    },
+                )
+            if change.baseVersion is None:
+                raise HTTPException(
+                    status_code=428,
+                    detail={
+                        "message": "Recursive task changes require baseVersion to protect edits on other devices.",
+                        "key": change.key,
+                        "currentVersion": current_version,
+                    },
+                )
+        if is_todo and not change.deleted:
+            try:
+                validate_todo(change.value)
+            except TodoValidationError as error:
+                raise HTTPException(status_code=422, detail={"message": str(error), "key": change.key}) from error
         value = _serialized_value(change)
 
         # A stale client that is already asking for the current value is safe.
@@ -214,18 +272,78 @@ def _write_changes(
             continue
 
         if (
-            change.baseVersion is not None
-            and change.baseVersion != current_version
+            is_todo and change.baseValue is not None
+            and change.baseVersion == current_version
+            and change.baseValue != current_value
         ):
+            # A client must never attach a newer acknowledgment version to an
+            # older local snapshot and thereby bypass three-way reconciliation.
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "message": "The record changed on another device.",
+                    "message": "The supplied baseValue does not match baseVersion. Refresh the base snapshot and reconcile your unsynced edits before retrying.",
                     "key": change.key,
                     "baseVersion": change.baseVersion,
                     "currentVersion": current_version,
+                    "currentValue": current_value,
+                    "currentDeleted": bool(current["deleted"]) if current else True,
+                    "conflicts": ["$baseValue"],
                 },
             )
+
+        if (
+            change.baseVersion is not None
+            and change.baseVersion != current_version
+        ):
+            conflict_detail = {
+                "message": "The record changed on another device.",
+                "key": change.key,
+                "baseVersion": change.baseVersion,
+                "currentVersion": current_version,
+                "currentValue": current_value,
+                "currentDeleted": bool(current["deleted"]) if current else True,
+            }
+            # Only the versioned recursive todo document defines entity merge
+            # semantics. Notes, daily plans, and older clients retain CAS.
+            if not (
+                is_todo and not change.deleted
+                and is_recursive_todo(current_value)
+                and is_recursive_todo(change.value)
+                and is_recursive_todo(change.baseValue)
+            ):
+                raise HTTPException(status_code=409, detail=conflict_detail)
+            baseline = conn.execute(
+                "select value, deleted from kv_revisions where store = ? and key = ? and version = ?",
+                (store, change.key, change.baseVersion),
+            ).fetchone()
+            if baseline is None or baseline["deleted"] or json.loads(baseline["value"]) != change.baseValue:
+                conflict_detail["message"] = "The base snapshot does not match its retained server revision. Refresh before resolving this conflict."
+                raise HTTPException(status_code=409, detail=conflict_detail)
+            try:
+                merged_value = three_way_merge(change.baseValue, change.value, current_value)
+                validate_todo(merged_value)
+            except MergeConflict as error:
+                conflict_detail["message"] = "Both devices changed the same task field. Choose which edits to keep."
+                conflict_detail["conflicts"] = error.paths
+                raise HTTPException(status_code=409, detail=conflict_detail) from error
+            except TodoValidationError as error:
+                conflict_detail["message"] = "The combined edits create an invalid task hierarchy or dependency graph."
+                conflict_detail["conflicts"] = [str(error)]
+                raise HTTPException(status_code=409, detail=conflict_detail) from error
+            change = Change(
+                key=change.key,
+                value=merged_value,
+                baseVersion=current_version,
+                todoSchemaVersion=2,
+            )
+            value = _serialized_value(change)
+            if _same_value(current, value, change.deleted):
+                versions[change.key] = current_version
+                if merged_changes is not None:
+                    merged_changes.append({"key": change.key, "value": merged_value, "version": current_version})
+                continue
+            if merged_changes is not None:
+                merged_changes.append({"key": change.key, "value": merged_value, "version": current_version + 1})
 
         next_version = current_version + 1
         deleted = int(change.deleted)
@@ -251,15 +369,17 @@ def _write_changes(
         )
         conn.execute(
             """
-            insert into kv (store, key, value, deleted, updated_at, version)
-            values (?, ?, ?, ?, ?, ?)
+            insert into kv (store, key, value, deleted, updated_at, version, required_todo_schema)
+            values (?, ?, ?, ?, ?, ?, ?)
             on conflict(store, key) do update set
               value = excluded.value,
               deleted = excluded.deleted,
               updated_at = excluded.updated_at,
-              version = excluded.version
+              version = excluded.version,
+              required_todo_schema = max(kv.required_todo_schema, excluded.required_todo_schema)
             """,
-            (store, change.key, value, deleted, now, next_version),
+            (store, change.key, value, deleted, now, next_version,
+             2 if is_todo and is_recursive_todo(change.value) else 0),
         )
         _prune_history(conn, store, change.key)
         versions[change.key] = next_version
@@ -339,6 +459,7 @@ def restore_revision(
             value=value,
             deleted=bool(revision["deleted"]),
             baseVersion=body.baseVersion,
+            todoSchemaVersion=body.todoSchemaVersion,
         )
 
         try:
@@ -461,6 +582,7 @@ def apply_changes(
 ) -> dict[str, Any]:
     check_auth(authorization)
     request_id = body.requestId or uuid.uuid4().hex
+    merged_changes: list[dict[str, Any]] = []
 
     with closing(connect()) as conn:
         try:
@@ -471,10 +593,14 @@ def apply_changes(
                 body.changes,
                 client_id=body.clientId,
                 request_id=request_id,
+                merged_changes=merged_changes,
             )
             conn.commit()
         except Exception:
             conn.rollback()
             raise
 
-    return {"ok": True, "versions": versions, "requestId": request_id}
+    result: dict[str, Any] = {"ok": True, "versions": versions, "requestId": request_id}
+    if merged_changes:
+        result["changes"] = merged_changes
+    return result

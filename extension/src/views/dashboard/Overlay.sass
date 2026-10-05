@@ -1,33 +1,38 @@
-.Overlay
+.Dashboard .SettingsBar
     position: absolute
-    top: 0
-    left: 0
-    margin: 0.5rem
-    padding: 0.5rem
-    border-radius: 1.25rem
-    transition: all 0.25s ease-out
+    inset: 0 0 auto
+    z-index: 13
+    display: flex
+    align-items: center
+    gap: 8px
+    width: 100%
+    height: var(--settings-bar-height)
+    padding: 0 12px
+    background: transparent
     font-size: 1.1rem
 
-    .on-hover
-        opacity: 0
-        transition: all 0.25s ease-out
+    > .settings-trigger, > a, > span
+        display: inline-flex
+        align-items: center
+        justify-content: center
+        flex: 0 0 auto
+        width: 28px
+        height: 28px
 
-    &:hover
-        opacity: 1
-        background-color: rgba(0, 0, 0, 0.65)
+    > .settings-trigger
+        padding: 0
+        color: inherit
+        background: transparent
+        border: 0
+        cursor: pointer
 
-        .on-hover
-            opacity: 1
+    > .settings-trigger:hover, > .settings-trigger:focus-visible, > a:hover, > a:focus-visible
+        color: #78c0f6
 
-        svg
-            color: #3498db
-            filter: none
+    button:focus-visible, a:focus-visible
+        outline: 2px solid currentColor
+        outline-offset: 2px
 
-    a, span
-        margin: 0 0.25em
-
-    svg, i
-        transition: stroke 0.25s ease-out
-
-.light .Overlay:hover
-    background-color: rgba(255, 255, 255, 0.65)
+.Dashboard.light .SettingsBar
+    > .settings-trigger:hover, > .settings-trigger:focus-visible, > a:hover, > a:focus-visible
+        color: #17639e

@@ -9,13 +9,22 @@ final class SyncStore: ObservableObject {
     @Published var isSyncing = false
     @Published var status = "Not synced yet"
     @Published var errorMessage: String?
+    @Published var canUndoTasks = false
+    @Published var todoConflict: TodoSyncConflict?
+    @Published var taskToOpen: String?
+    @Published var taskMessage: String?
+    private var taskUndo: [TodoData] = []
+    private var todoDirty = UserDefaults.standard.bool(forKey: "cache.todos.dirty")
+    private var baseTodos: TodoData?
+    private var baseTodoValue: JSONValue?
+    private var todoDocumentUnavailable = false
 
     @Published var serverURL = UserDefaults.standard.string(forKey: "sync.serverURL") ?? "https://raspberrypi.tail2db278.ts.net" {
-        didSet { UserDefaults.standard.set(serverURL, forKey: "sync.serverURL") }
+        didSet { UserDefaults.standard.set(serverURL, forKey: "sync.serverURL"); if oldValue != serverURL { invalidateTaskBaseline() } }
     }
 
     @Published var authToken = UserDefaults.standard.string(forKey: "sync.authToken") ?? "jfiweokgerhotrwhtr" {
-        didSet { UserDefaults.standard.set(authToken, forKey: "sync.authToken") }
+        didSet { UserDefaults.standard.set(authToken, forKey: "sync.authToken"); if oldValue != authToken { invalidateTaskBaseline() } }
     }
 
     private let storeName = "tabliss/config"
@@ -31,17 +40,28 @@ final class SyncStore: ObservableObject {
     static let defaultDueTime = "23:59"
 
     init() {
-        todos = Self.load(TodoData.self, key: "cache.todos") ?? TodoData()
+        let cached = Self.load(TodoData.self, key: "cache.todos") ?? TodoData()
+        todos = TaskGraph.migrate(cached)
+        baseTodos = Self.load(TodoData.self, key: "cache.todos.base")
+        baseTodoValue = Self.load(JSONValue.self, key: "cache.todos.baseValue")
+        versions = Self.load([String: Int].self, key: "cache.sync.versions") ?? [:]
+        todoConflict = Self.load(TodoSyncConflict.self, key: "cache.todos.conflict")
+        if UserDefaults.standard.string(forKey: "cache.todos.scope") != serverURL {
+            versions.removeValue(forKey: todoDataKey); baseTodos = nil; baseTodoValue = nil; todoConflict = nil
+            todoDirty = !todos.items.isEmpty || !todos.customLists.isEmpty || !todos.occurrences.isEmpty
+        }
+        taskToOpen = UserDefaults.standard.string(forKey: "todo.pendingTaskId")
+        if cached.schemaVersion < 2 { todoDirty = true; Self.save(cached, key: "cache.todos.legacyBackup") }
         notes = Self.load(NotesData.self, key: "cache.notes") ?? NotesData()
         plan = Self.load(PlanData.self, key: "cache.plan") ?? PlanData()
     }
 
     var activeTodos: [TodoItem] {
-        todos.items.filter { $0.dismissed != true }
+        todos.items.filter { TaskGraph.available(todos, $0) }
     }
 
     var finishedTodos: [TodoItem] {
-        todos.items.filter { $0.dismissed == true }
+        todos.items.filter { $0.deletedAt == nil && ($0.isDone || $0.dismissed == true || $0.archivedAt != nil) }
     }
 
     var liveNotes: [NoteNode] {
@@ -53,101 +73,162 @@ final class SyncStore: ObservableObject {
         await performSync {
             let snapshot = try await self.requestSnapshot()
             self.apply(snapshot: snapshot)
-            self.status = "Synced \(Date.now.formatted(date: .omitted, time: .shortened))"
+            self.status = self.todoConflict == nil ? "Synced \(Date.now.formatted(date: .omitted, time: .shortened))" : "Tasks need conflict review"
         }
         await syncLock.release()
+        if todoDirty && todoConflict == nil { Task { await pushTodos() } }
     }
 
-    func addTodo(_ contents: String, dueDate: String? = nil, dueTime: String? = nil, repeatRule: RepeatRule? = nil) {
-        let trimmed = contents.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        todos.items.append(
-            TodoItem(
-                id: Self.makeId(),
-                contents: trimmed,
-                completed: false,
-                dismissed: false,
-                dueDate: dueDate,
-                dueTime: dueDate != nil || repeatRule != nil ? (dueTime ?? Self.defaultDueTime) : nil,
-                repeat: repeatRule
-            )
-        )
+    private func invalidateTaskBaseline() {
+        versions.removeValue(forKey: todoDataKey)
+        baseTodos = nil; baseTodoValue = nil; todoConflict = nil; todoDocumentUnavailable = false
+        taskUndo.removeAll(); canUndoTasks = false
+        todoDirty = !todos.items.isEmpty || !todos.customLists.isEmpty
+        persist()
+    }
+
+    @discardableResult
+    func mutateTasks(_ operation: (inout TodoData) throws -> Void) -> Bool {
+        var next = todos
+        do {
+            try operation(&next)
+            try TaskGraph.validate(next)
+            guard next != todos else { return true }
+            taskUndo.append(todos)
+            if taskUndo.count > 30 { taskUndo.removeFirst() }
+            canUndoTasks = true
+            let previous = Dictionary(uniqueKeysWithValues: todos.items.map { ($0.id, $0) })
+            let reopened = next.items.filter { !$0.isDone && !$0.isCanceled && previous[$0.id].map { $0.isDone || $0.isCanceled } == true }
+            taskMessage = reopened.isEmpty ? nil : "Reopened \(reopened.map(\.contents).joined(separator: ", ")) because unfinished work was restored or added."
+            todos = next
+            todoDirty = true
+            errorMessage = nil
+            persist()
+            Task { await pushTodos() }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func undoTasks() {
+        guard let prior = taskUndo.popLast() else { return }
+        // Undo is a new edit, with new timestamps for synchronization.
+        var restored = prior
+        let at = TaskGraph.timestamp()
+        for index in restored.items.indices {
+            if todos.items.first(where: { $0.id == restored.items[index].id }) != restored.items[index] { restored.items[index].updatedAt = at }
+        }
+        // Keep tasks created after the snapshot as tombstones so remote clients cannot resurrect them.
+        let priorIds = Set(restored.items.map(\.id))
+        for var task in todos.items where !priorIds.contains(task.id) { task.deletedAt = at; task.updatedAt = at; restored.items.append(task) }
+        TaskGraph.record(&restored, type: "undo", detail: "Previous task change undone", at: at)
+        todos = restored
+        taskMessage = "Task change undone."
+        canUndoTasks = !taskUndo.isEmpty
+        todoDirty = true
         persist()
         Task { await pushTodos() }
+    }
+
+    func addTodo(_ contents: String, dueDate: String? = nil, dueTime: String? = nil, repeatRule: RepeatRule? = nil, parentTaskId: String? = nil, listId: String? = nil) {
+        _ = mutateTasks { data in
+            try TaskGraph.add(&data, task: TodoItem(id: Self.makeId(), contents: contents, dueDate: dueDate, dueTime: dueDate != nil || repeatRule != nil ? (dueTime ?? Self.defaultDueTime) : nil, repeat: repeatRule, listId: listId, parentTaskId: parentTaskId))
+        }
+    }
+
+    @discardableResult
+    func saveTask(_ task: TodoItem, isNew: Bool = false) -> Bool {
+        mutateTasks { data in
+            if isNew { try TaskGraph.add(&data, task: task) }
+            else if let old = TaskGraph.item(data, task.id), old.isDone && !task.isDone {
+                TaskGraph.reopen(&data, id: task.id)
+                try TaskGraph.update(&data, task: task)
+            } else { try TaskGraph.update(&data, task: task) }
+        }
     }
 
     func updateTodo(_ item: TodoItem, contents: String, dueDate: String?, dueTime: String?, repeatRule: RepeatRule?) {
-        let trimmed = contents.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let index = todos.items.firstIndex(where: { $0.id == item.id }) else {
-            return
-        }
-        todos.items[index].contents = trimmed
-        todos.items[index].dueDate = dueDate
-        todos.items[index].dueTime = dueDate != nil || repeatRule != nil ? (dueTime ?? Self.defaultDueTime) : nil
-        todos.items[index].repeat = repeatRule
-        persist()
-        Task { await pushTodos() }
+        var updated = TaskGraph.item(todos, item.id) ?? item
+        updated.contents = contents
+        updated.dueDate = dueDate
+        updated.dueTime = dueTime
+        updated.repeat = repeatRule
+        _ = saveTask(updated)
     }
 
     func toggleTodo(_ item: TodoItem) {
-        guard let index = todos.items.firstIndex(where: { $0.id == item.id }) else { return }
-        if todos.items[index].completed == false, let repeatRule = todos.items[index].repeat {
-            completeRepeatInstance(item: todos.items[index], repeatRule: repeatRule)
-            return
-        }
-        todos.items[index].completed.toggle()
-        if todos.items[index].completed == false {
-            todos.items[index].dismissed = false
-        }
-        persist()
-        Task { await pushTodos() }
+        if item.isDone { _ = mutateTasks { TaskGraph.reopen(&$0, id: item.id) } }
+        else { _ = completeTask(item.id) }
     }
 
-    func dismissTodo(_ item: TodoItem) {
-        guard let index = todos.items.firstIndex(where: { $0.id == item.id }) else { return }
-        todos.items[index].completed = true
-        todos.items[index].dismissed = true
-        persist()
-        Task { await pushTodos() }
+    @discardableResult
+    func completeTask(_ id: String, cascade: Bool = false, permanent: Bool = false) -> Bool {
+        mutateTasks { try TaskGraph.complete(&$0, id: id, cascade: cascade, permanent: permanent) }
     }
 
-    func deleteTodo(_ item: TodoItem) {
-        todos.items.removeAll { $0.id == item.id }
-        persist()
-        Task { await pushTodos() }
+    func dismissTodo(_ item: TodoItem) { archiveTask(item.id, archived: true) }
+    func deleteTodo(_ item: TodoItem) { _ = mutateTasks { TaskGraph.trash(&$0, id: item.id) } }
+    func restoreTask(_ id: String) { _ = mutateTasks { try TaskGraph.restore(&$0, id: id) } }
+    func archiveTask(_ id: String, archived: Bool) { _ = mutateTasks { TaskGraph.archive(&$0, id: id, archived: archived) } }
+    @discardableResult
+    func moveTask(_ id: String, parent: String?, listId: String? = nil) -> Bool {
+        mutateTasks { try TaskGraph.move(&$0, id: id, parent: parent, listId: listId) }
     }
-
-    private func completeRepeatInstance(item: TodoItem, repeatRule: RepeatRule) {
-        let currentDueDate = item.dueDate ?? Self.firstRepeatDate(repeatRule)
-        guard let nextDueDate = Self.nextRepeatDate(repeatRule, from: currentDueDate) else { return }
-        let siblingDates = Set(todos.items.compactMap { sibling -> String? in
-            sibling.parentId == item.id && sibling.completed ? sibling.dueDate : nil
-        })
-        var advancedDate = nextDueDate
-        var safety = 0
-        while siblingDates.contains(advancedDate), safety < 365,
-              let next = Self.nextRepeatDate(repeatRule, from: advancedDate) {
-            advancedDate = next
-            safety += 1
+    func indentTask(_ id: String) {
+        guard let task = TaskGraph.item(todos, id) else { return }
+        let siblings = TaskGraph.children(todos, task.parentTaskId).filter { task.parentTaskId != nil || $0.listId == task.listId }
+        guard let index = siblings.firstIndex(where: { $0.id == id }), index > 0 else { return }
+        _ = moveTask(id, parent: siblings[index - 1].id)
+    }
+    func outdentTask(_ id: String) {
+        guard let task = TaskGraph.item(todos, id), let parentId = task.parentTaskId, let parent = TaskGraph.item(todos, parentId) else { return }
+        _ = moveTask(id, parent: parent.parentTaskId, listId: TaskGraph.root(todos, id)?.listId)
+    }
+    func reorderTask(_ id: String, offset: Int) {
+        guard let task = TaskGraph.item(todos, id) else { return }
+        let siblings = TaskGraph.children(todos, task.parentTaskId).filter { task.parentTaskId != nil || $0.listId == task.listId }
+        guard let index = siblings.firstIndex(where: { $0.id == id }), siblings.indices.contains(index + offset) else { return }
+        reorderTasks(siblings, from: IndexSet(integer: index), to: index + offset + (offset > 0 ? 1 : 0))
+    }
+    func reorderTasks(_ tasks: [TodoItem], from offsets: IndexSet, to destination: Int) {
+        var ordered = tasks
+        let moving = offsets.sorted().map { ordered[$0] }
+        for index in offsets.sorted(by: >) { ordered.remove(at: index) }
+        let insertion = destination - offsets.filter { $0 < destination }.count
+        ordered.insert(contentsOf: moving, at: min(ordered.count, max(0, insertion)))
+        _ = mutateTasks { data in
+            for (position, task) in ordered.enumerated() {
+                if let index = data.items.firstIndex(where: { $0.id == task.id }) { data.items[index].order = Double(position); data.items[index].updatedAt = TaskGraph.timestamp() }
+            }
+            TaskGraph.record(&data, type: "reordered", detail: "Sibling task order changed")
         }
-        guard let parentIndex = todos.items.firstIndex(where: { $0.id == item.id }) else { return }
-        todos.items[parentIndex].dueDate = advancedDate
-        todos.items.append(
-            TodoItem(
-                id: Self.makeId(),
-                contents: item.contents,
-                completed: true,
-                dismissed: false,
-                dueDate: currentDueDate,
-                dueTime: item.dueTime,
-                repeat: nil,
-                parentId: item.id,
-                listId: item.listId
-            )
-        )
-        persist()
-        Task { await pushTodos() }
+    }
+    @discardableResult
+    func addDependency(prerequisite: String, dependent: String) -> Bool { mutateTasks { try TaskGraph.addDependency(&$0, prerequisite: prerequisite, dependent: dependent) } }
+    func removeDependency(_ edge: TaskDependency) {
+        _ = mutateTasks { data in
+            data.dependencies.removeAll { $0.id == edge.id }
+            TaskGraph.record(&data, taskId: edge.dependentTaskId, type: "dependencyRemoved")
+        }
+    }
+    func shiftSchedule(_ id: String, days: Int) { _ = mutateTasks { TaskGraph.shiftSchedule(&$0, id: id, days: days) } }
+    func saveList(id: String? = nil, name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        _ = mutateTasks { data in
+            if let id, let index = data.customLists.firstIndex(where: { $0.id == id }) { data.customLists[index].name = name; data.customLists[index].updatedAt = TaskGraph.timestamp() }
+            else { data.customLists.append(CustomList(id: Self.makeId(), name: name, updatedAt: TaskGraph.timestamp())) }
+            TaskGraph.record(&data, type: "listUpdated", detail: name)
+        }
+    }
+    func deleteList(_ id: String) {
+        _ = mutateTasks { data in
+            data.customLists.removeAll { $0.id == id }
+            for index in data.items.indices where data.items[index].listId == id { data.items[index].listId = nil; data.items[index].updatedAt = TaskGraph.timestamp() }
+            TaskGraph.record(&data, type: "listDeleted", detail: "Projects returned to Inbox")
+        }
     }
 
     func addNote(title: String, contents: String) {
@@ -200,7 +281,78 @@ final class SyncStore: ObservableObject {
     }
 
     func pushTodos() async {
-        await push(value: todos, key: todoDataKey, label: "Todos saved")
+        await syncLock.acquire()
+        await performSync {
+            guard self.todoDirty, self.todoConflict == nil, !self.todoDocumentUnavailable else { return }
+            if self.versions[self.todoDataKey] == nil || self.baseTodoValue == nil { self.apply(snapshot: try await self.requestSnapshot()) }
+            guard self.todoConflict == nil, !self.todoDocumentUnavailable else { return }
+            let submitted = self.todos
+            do {
+                let response = try await self.post(changes: [RemoteChange(key: self.todoDataKey, value: try JSONValue(encoding: submitted), deleted: false, baseVersion: self.versions[self.todoDataKey] ?? 0, baseValue: self.baseTodoValue, todoSchemaVersion: 2)])
+                let savedValue = try response.changes?.first(where: { $0.key == self.todoDataKey })?.value ?? JSONValue(encoding: submitted)
+                let saved = try savedValue.decode(TodoData.self)
+                if saved != submitted { self.taskUndo.removeAll(); self.canUndoTasks = false }
+                if self.todos == submitted { self.todos = saved; self.todoDirty = false }
+                else {
+                    do { self.todos = try TaskGraph.merge(base: submitted, local: self.todos, remote: saved) }
+                    catch {
+                        Self.save(self.todos, key: "cache.todos.conflictBackup")
+                        self.todoConflict = TodoSyncConflict(local: self.todos, remote: saved, version: response.versions?[self.todoDataKey] ?? 0, remoteValue: savedValue, detail: error.localizedDescription)
+                    }
+                }
+                self.baseTodos = saved
+                self.baseTodoValue = savedValue
+                if let version = response.versions?[self.todoDataKey] { self.versions[self.todoDataKey] = version }
+                self.status = "Tasks saved"
+                self.persist()
+                if self.todoDirty && self.todoConflict == nil { Task { await self.pushTodos() } }
+            } catch SyncError.conflict {
+                self.apply(snapshot: try await self.requestSnapshot())
+                if self.todoConflict == nil { self.status = "Changes merged; saving"; Task { await self.pushTodos() } }
+            }
+        }
+        await syncLock.release()
+    }
+
+    func resolveTodoConflict(useLocal: Bool) {
+        guard let conflict = todoConflict else { return }
+        Self.save(useLocal ? conflict.remote : todos, key: "cache.todos.conflictBackup")
+        baseTodos = conflict.remote
+        baseTodoValue = conflict.remoteValue
+        let local = todos
+        todos = useLocal ? local : conflict.remote
+        todoDocumentUnavailable = false
+        todoDirty = useLocal || (try? conflict.remoteValue.decode(TodoData.self).schemaVersion) != 2
+        taskUndo.removeAll(); canUndoTasks = false
+        versions[todoDataKey] = conflict.version
+        todoConflict = nil
+        persist()
+        if todoDirty { Task { await pushTodos() } }
+    }
+
+    func recoverTaskBackup() {
+        guard let backup = Self.load(TodoData.self, key: "cache.todos.conflictBackup") else { return }
+        _ = mutateTasks { data in
+            let liveIds = Set(data.items.map(\.id))
+            var mapping: [String: String] = [:]
+            for task in backup.items { mapping[task.id] = liveIds.contains(task.id) ? Self.makeId() : task.id }
+            for var task in backup.items {
+                task.id = mapping[task.id]!
+                task.parentTaskId = task.parentTaskId.flatMap { mapping[$0] }
+                task.deletedByTaskId = task.deletedByTaskId.flatMap { mapping[$0] }
+                task.updatedAt = TaskGraph.timestamp()
+                data.items.append(task)
+            }
+            for var edge in backup.dependencies {
+                edge.id = Self.makeId()
+                edge.prerequisiteTaskId = mapping[edge.prerequisiteTaskId] ?? edge.prerequisiteTaskId
+                edge.dependentTaskId = mapping[edge.dependentTaskId] ?? edge.dependentTaskId
+                data.dependencies.append(edge)
+            }
+            for list in backup.customLists where !data.customLists.contains(where: { $0.id == list.id }) { data.customLists.append(list) }
+            for occurrence in backup.occurrences where !data.occurrences.contains(where: { $0.id == occurrence.id }) { data.occurrences.append(occurrence) }
+            TaskGraph.record(&data, type: "backupRecovered", detail: "Conflict backup restored as separate tasks")
+        }
     }
 
     func pushNotes() async {
@@ -245,36 +397,87 @@ final class SyncStore: ObservableObject {
     }
 
     private func requestSnapshot() async throws -> RemoteSnapshot {
+        let requestedURL = serverURL, requestedToken = authToken
         var request = URLRequest(url: try endpoint(""))
         request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache", forHTTPHeaderField: "cache-control")
         applyHeaders(to: &request)
         let (data, response) = try await URLSession.shared.data(for: request)
+        guard requestedURL == serverURL && requestedToken == authToken else { throw SyncError.connectionChanged }
         try validate(response: response)
         return try decoder.decode(RemoteSnapshot.self, from: data)
     }
 
     private func post(changes: [RemoteChange]) async throws -> RemoteWriteResponse {
+        let requestedURL = serverURL, requestedToken = authToken
         var request = URLRequest(url: try endpoint("/changes"))
         request.httpMethod = "POST"
         applyHeaders(to: &request)
         request.httpBody = try encoder.encode(RemoteSnapshot(changes: changes, clientId: clientId))
         let (data, response) = try await URLSession.shared.data(for: request)
+        guard requestedURL == serverURL && requestedToken == authToken else { throw SyncError.connectionChanged }
         try validate(response: response)
         return try decoder.decode(RemoteWriteResponse.self, from: data)
     }
 
     private func apply(snapshot: RemoteSnapshot) {
         for change in snapshot.changes {
-            if let version = change.version {
-                versions[change.key] = version
-            }
+            if change.key != todoDataKey, let version = change.version { versions[change.key] = version }
         }
         let values = Dictionary(uniqueKeysWithValues: snapshot.changes.compactMap { change -> (String, JSONValue)? in
             guard change.deleted != true, let value = change.value else { return nil }
             return (change.key, value)
         })
 
-        decodeIfPresent(TodoData.self, key: todoDataKey, values: values) { todos = $0 }
+        let todoChange = snapshot.changes.first { $0.key == todoDataKey }
+        if todoChange?.deleted == true {
+            let remote = TodoData()
+            if todoDirty {
+                Self.save(todos, key: "cache.todos.conflictBackup")
+                todoConflict = TodoSyncConflict(local: todos, remote: remote, version: todoChange?.version ?? 0, remoteValue: .null, detail: "The task document was removed on another device. Your local work is preserved.")
+            } else { todos = remote }
+            baseTodos = remote; baseTodoValue = .null
+            if let version = todoChange?.version { versions[todoDataKey] = version }
+            taskUndo.removeAll(); canUndoTasks = false; todoDocumentUnavailable = false
+        }
+        if let value = values[todoDataKey] {
+            do {
+                let decodedRemote = try value.decode(TodoData.self, decoder: decoder)
+                let remote = TaskGraph.migrate(decodedRemote)
+                if value != baseTodoValue { taskUndo.removeAll(); canUndoTasks = false }
+                guard remote.schemaVersion <= 2 else { throw TaskGraphError.invalid("Update LocalFlow to use this newer task document.") }
+                try TaskGraph.validate(remote)
+                todoDocumentUnavailable = false
+                let versionRegressed = (todoChange?.version ?? 0) < (versions[todoDataKey] ?? 0) && value != baseTodoValue
+                if versionRegressed {
+                    todoDirty = true
+                    Self.save(todos, key: "cache.todos.conflictBackup")
+                    todoConflict = TodoSyncConflict(local: todos, remote: remote, version: todoChange?.version ?? 0, remoteValue: value, detail: "The synced task version moved backwards. Review the retained local tasks and the server snapshot.")
+                    baseTodos = remote; baseTodoValue = value
+                } else if todoDirty {
+                    do {
+                        if let baseTodos { todos = try TaskGraph.merge(base: baseTodos, local: todos, remote: remote) }
+                        else if todos.items.isEmpty && todos.customLists.isEmpty && todos.occurrences.isEmpty { todos = remote; todoDirty = decodedRemote.schemaVersion < 2 }
+                        else if (try? todos.legacyBackup?.decode(TodoData.self)) == decodedRemote { /* Safe migration of the same legacy document. */ }
+                        else if todos == remote { todoDirty = decodedRemote.schemaVersion < 2 }
+                        else { throw TaskGraphError.invalid("The local tasks have no matching sync baseline. Choose which document to retain; both copies are preserved.") }
+                        baseTodos = remote
+                        baseTodoValue = value
+                    } catch {
+                        Self.save(todos, key: "cache.todos.conflictBackup")
+                        todoConflict = TodoSyncConflict(local: todos, remote: remote, version: todoChange?.version ?? 0, remoteValue: value, detail: error.localizedDescription)
+                        baseTodos = remote; baseTodoValue = value
+                        errorMessage = "Task changes need review. Both copies are preserved."
+                    }
+                } else { todos = remote; baseTodos = remote; baseTodoValue = value; todoDirty = decodedRemote.schemaVersion < 2 }
+                if let version = todoChange?.version { versions[todoDataKey] = version }
+            } catch {
+                todoDocumentUnavailable = true
+                Self.save(value, key: "cache.todos.incompatibleRemoteBackup")
+                errorMessage = error.localizedDescription
+            }
+        }
         decodeIfPresent(NotesData.self, key: notesDataKey, values: values) { notes = $0 }
         if values[planDataKey] != nil {
             decodeIfPresent(PlanData.self, key: planDataKey, values: values) { plan = $0 }
@@ -319,6 +522,7 @@ final class SyncStore: ObservableObject {
 
     private func validate(response: URLResponse) throws {
         guard let http = response as? HTTPURLResponse else { return }
+        if http.statusCode == 428 { throw SyncError.schemaUpgrade }
         if http.statusCode == 409 {
             throw SyncError.conflict
         }
@@ -349,46 +553,8 @@ final class SyncStore: ObservableObject {
         return formatter.string(from: Date())
     }
 
-    static func firstRepeatDate(_ rule: RepeatRule, today: Date = Date()) -> String? {
-        if rule.type == "daily" {
-            return Self.dateKey(today)
-        }
-        let days = repeatDays(rule, fallbackDate: today)
-        guard !days.isEmpty else { return nil }
-        let calendar = Calendar(identifier: .gregorian)
-        for offset in 0...6 {
-            guard let candidate = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
-            if days.contains(calendar.component(.weekday, from: candidate) - 1) {
-                return Self.dateKey(candidate)
-            }
-        }
-        return nil
-    }
-
-    static func nextRepeatDate(_ rule: RepeatRule, from dueDate: String?) -> String? {
-        let base = date(from: dueDate) ?? Date()
-        let calendar = Calendar(identifier: .gregorian)
-        if rule.type == "daily" {
-            return calendar.date(byAdding: .day, value: 1, to: base).map(Self.dateKey)
-        }
-        let days = repeatDays(rule, fallbackDate: base)
-        guard !days.isEmpty else { return nil }
-        for offset in 1...7 {
-            guard let candidate = calendar.date(byAdding: .day, value: offset, to: base) else { continue }
-            if days.contains(calendar.component(.weekday, from: candidate) - 1) {
-                return Self.dateKey(candidate)
-            }
-        }
-        return nil
-    }
-
-    private static func repeatDays(_ rule: RepeatRule, fallbackDate: Date) -> [Int] {
-        if rule.type == "daily" { return [0, 1, 2, 3, 4, 5, 6] }
-        if let days = rule.days, !days.isEmpty { return days }
-        return rule.type == "weekly"
-            ? [Calendar(identifier: .gregorian).component(.weekday, from: fallbackDate) - 1]
-            : []
-    }
+    static func firstRepeatDate(_ rule: RepeatRule, today: Date = Date()) -> String? { TaskGraph.firstRepeatDate(rule, today: today) }
+    static func nextRepeatDate(_ rule: RepeatRule, from dueDate: String?) -> String? { TaskGraph.nextRepeatDate(rule, from: dueDate) }
 
     private static func dateKey(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -448,6 +614,13 @@ final class SyncStore: ObservableObject {
 
     private func persist() {
         Self.save(todos, key: "cache.todos")
+        Self.save(baseTodos, key: "cache.todos.base")
+        Self.save(baseTodoValue, key: "cache.todos.baseValue")
+        if let conflict = todoConflict { Self.save(conflict, key: "cache.todos.conflict") }
+        else { UserDefaults.standard.removeObject(forKey: "cache.todos.conflict") }
+        Self.save(versions, key: "cache.sync.versions")
+        UserDefaults.standard.set(serverURL, forKey: "cache.todos.scope")
+        UserDefaults.standard.set(todoDirty, forKey: "cache.todos.dirty")
         Self.save(notes, key: "cache.notes")
         Self.save(plan, key: "cache.plan")
     }
@@ -466,11 +639,16 @@ final class SyncStore: ObservableObject {
 
 private enum SyncError: LocalizedError {
     case conflict
+    case schemaUpgrade
+    case connectionChanged
 
     var errorDescription: String? {
         switch self {
         case .conflict:
-            return "This data changed on another device. Refresh before saving again."
+            return "This data changed on another device. Review the task conflict before saving."
+        case .connectionChanged: return "The sync connection changed. Sync again using the current server."
+        case .schemaUpgrade:
+            return "The server requires a newer task schema. Update LocalFlow before saving."
         }
     }
 }
@@ -496,4 +674,13 @@ private actor AsyncLock {
             waiters.removeFirst().resume()
         }
     }
+}
+
+struct TodoSyncConflict: Codable, Identifiable {
+    var id = UUID()
+    let local: TodoData
+    let remote: TodoData
+    let version: Int
+    let remoteValue: JSONValue
+    let detail: String
 }

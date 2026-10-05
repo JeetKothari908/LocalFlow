@@ -5,7 +5,7 @@ import TodoSettings from "../todo/TodoSettings";
 const config: Config = {
   key: "widget/todo",
   name: "Tasks",
-  description: "Momentum-style task list.",
+  description: "Projects, nested tasks, dependencies, and daily planning.",
   dashboardComponent: TodoPlus,
   settingsComponent: TodoSettings,
 };

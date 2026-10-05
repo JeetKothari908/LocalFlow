@@ -1,5 +1,15 @@
 .Dashboard
     overflow: hidden
+    --settings-bar-height: 48px
+    --side-panel-width: clamp(260px, 30vw, 414px)
+    --left-panel-width: 0px
+    --right-panel-width: 0px
+
+    &:has(.side-panel-left)
+        --left-panel-width: var(--side-panel-width)
+
+    &:has(.side-panel-right)
+        --right-panel-width: var(--side-panel-width)
 
     svg
         filter: drop-shadow(0 0 0.5rem rgba(0, 0, 0, 0.25))
@@ -43,3 +53,10 @@
         background: rgba(0, 0, 0, 0.6)
         color: #fff
         z-index: 5
+
+@media (max-width: 900px)
+    .Dashboard
+        --side-panel-width: min(414px, calc(100vw - 64px))
+
+        &:has(.side-panel-left):has(.side-panel-right)
+            --side-panel-width: min(clamp(180px, 30vw, 414px), calc((100vw - 64px) / 2))

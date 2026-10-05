@@ -23,7 +23,12 @@ unfinished tasks from all roots, lists, and depths.
   centered between their child branches and right-angle connecting lines.
   Clicking a card selects its settings and reveals its children while retaining
   the branch context. Expand/collapse controls and map scrolling handle deeper
-  chains. The dashboard remains interactive while the map is open.
+  chains. Clicks anywhere inside the workspace (including the menu, map,
+  composer, and planning views) operate their controls without dismissing it.
+  Clicking outside the workspace closes it and lets that same click operate
+  the underlying dashboard control or open another task. This also works
+  when the compact menu is hidden. Branch-completion review suspends outside
+  dismissal. The close button and Escape remain available.
 - A narrow settings rail sits farther left than the map. Existing fields are
   grouped in expandable menus for name/notes, dates/effort, state/priority,
   recurrence, and parent/list assignment. The View dropdown retains Outline,
@@ -309,6 +314,9 @@ fake sections/tasks and checks panel order, independent scrolling, both map
 directions, metadata, settings placement, narrow controls, and sync recovery
 placement between occupied panels. `npm run test:recovery-ui` checks the exact
 stored-record comparisons, collision avoidance, and complete recovery exports.
+`npm run test:task-menu-ui` checks clicks inside the details editor, subtask
+composer, and map, along with explicit closing and outside dismissal in wide
+and compact layouts. It uses the same dedicated Chrome test profile.
 
 ## Approved implementation stages
 

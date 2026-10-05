@@ -54,6 +54,18 @@ async function main() {
       await send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
     await delay();
   };
+  const clickElement = async (expression) => {
+    await run(`(${expression}).scrollIntoView({ block: 'center', inline: 'center' })`);
+    const point = await evaluate(`(() => {
+      const element = (${expression});
+      const rect = element.getBoundingClientRect();
+      const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+      if (!element.contains(document.elementFromPoint(x, y)))
+        throw new Error('Test control is obscured: ' + element.outerHTML);
+      return { x, y };
+    })()`);
+    await mouseClick(point);
+  };
   try {
     await send('Page.enable');
     await send('Emulation.setDeviceMetricsOverride', {
@@ -79,10 +91,14 @@ async function main() {
     await run(`${titleButton(root)}.click()`);
     assert.deepEqual(await menu(), { task: root, visible: true });
     await run(`${titleButton(other)}.click()`);
-    assert.equal(await evaluate(`!!document.querySelector('.TaskWorkspace')`), false, 'First click on another task should only close the workspace');
-    await run(`${titleButton(other)}.click()`);
-    assert.deepEqual(await menu(), { task: other, visible: true }, 'Second click may open the other task');
+    assert.deepEqual(await menu(), { task: other, visible: true }, 'One click on another task must open it without being swallowed');
+    await clickElement(`document.querySelector('.legacy-menu-edit')`);
+    await clickElement(`document.querySelector('.task-editor input[required]')`);
+    assert.equal(await evaluate(`!!document.querySelector('.task-editor') && !!document.activeElement.closest('.task-editor')`), true, 'Clicking details must focus the editor without dismissing it');
+    await clickElement(`document.querySelector('.legacy-menu-edit')`);
     await eventually(`!!document.querySelector('input[aria-label="New subtask"]')`);
+    await clickElement(`document.querySelector('input[aria-label="New subtask"]')`);
+    assert.equal(await evaluate(`document.activeElement.getAttribute('aria-label')`), 'New subtask', 'The composer must receive clicks outside the settings rail');
     await run(`(() => {
       const input = document.querySelector('input[aria-label="New subtask"]');
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(child)});
@@ -91,8 +107,12 @@ async function main() {
     })()`);
     const childTitle = `[...document.querySelectorAll('.task-map-panel .task-title')].find((item) => item.textContent === ${JSON.stringify(child)})`;
     await eventually(`!!${childTitle}`);
-    await run(`${childTitle}.click()`);
-    assert.equal(await evaluate(`!!document.querySelector('.TaskWorkspace')`), false, 'Clicking the task map should close the workspace');
+    await clickElement(childTitle);
+    assert.deepEqual(await menu(), { task: child, visible: true }, 'Clicking the map must select the child and keep its menu open');
+    await clickElement(`(${childTitle}).closest('.task-row').querySelector('.task-check')`);
+    assert.equal(await evaluate(`document.querySelector('.legacy-menu-title .task-check').getAttribute('aria-pressed')`), 'true', 'The map checkbox must complete the task without dismissing the workspace');
+    await clickElement(`document.querySelector('button[aria-label="Close task workspace"]')`);
+    assert.equal(await evaluate(`!!document.querySelector('.TaskWorkspace')`), false, 'The explicit close button must still work');
     await run(`${titleButton(other)}.click()`);
     assert.deepEqual(await menu(), { task: other, visible: true });
     const header = '.panel:first-of-type .panel-title';
@@ -100,10 +120,19 @@ async function main() {
     const point = await evaluate(`(() => { const rect = document.querySelector(${JSON.stringify(header)}).getBoundingClientRect(); return { x: rect.x + 10, y: rect.y + 10 }; })()`);
     await mouseClick(point);
     assert.equal(await evaluate(`!!document.querySelector('.TaskWorkspace')`), false, 'Clicking the page should close the task workspace');
-    assert.equal(await evaluate(`document.querySelector(${JSON.stringify(header)}).getAttribute('aria-expanded')`), before);
-    await mouseClick(point);
-    assert.notEqual(await evaluate(`document.querySelector(${JSON.stringify(header)}).getAttribute('aria-expanded')`), before);
-    console.log('Task menu outside-click behavior passed');
+    assert.notEqual(await evaluate(`document.querySelector(${JSON.stringify(header)}).getAttribute('aria-expanded')`), before, 'The same outside click must also operate the dashboard control');
+    await send('Emulation.setDeviceMetricsOverride', {
+      width: 390, height: 844, deviceScaleFactor: 1, mobile: false,
+    });
+    await run(`${titleButton(other)}.click()`);
+    await eventually(`document.querySelector('.TaskWorkspace')?.dataset.compact === 'true'`);
+    await clickElement(`document.querySelector('.settings-heading .mobile-settings-toggle')`);
+    assert.deepEqual(await menu(), { task: other, visible: false }, 'Hide must retain the compact workspace');
+    await clickElement(`document.querySelector('input[aria-label="New subtask"]')`);
+    assert.equal(await evaluate(`!!document.querySelector('.TaskWorkspace')`), true, 'The map remains interactive with its menu hidden');
+    await run(`document.querySelector(${JSON.stringify(header)}).click()`);
+    assert.equal(await evaluate(`!!document.querySelector('.TaskWorkspace')`), false, 'Outside clicks must also close a compact workspace with a hidden menu');
+    console.log('Task menu internal controls and outside-click behavior passed');
   } finally {
     socket.close();
   }

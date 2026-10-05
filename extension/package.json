@@ -14,6 +14,7 @@
     "dev:web": "cross-env BUILD_TARGET=web webpack serve",
     "test": "tsc -p tsconfig.test.json && jest",
     "test:tasks-ui": "node scripts/test-tasks-ui.cjs",
+    "test:task-menu-ui": "node scripts/test-task-menu-ui.cjs",
     "test:recovery-ui": "node scripts/test-recovery-ui.cjs",
     "test:side-panels-ui": "node scripts/test-side-panels-ui.cjs",
     "translations": "node ./scripts/translations.js"

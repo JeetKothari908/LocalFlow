@@ -222,27 +222,23 @@ export default function TaskWorkspace({
     );
   }, [task.id]);
   useEffect(() => {
-    const outsideMenu = (target: EventTarget | null) => {
-      if (confirmComplete || pendingCompletion || !(target instanceof Element))
-        return false;
-      if (
-        target.closest(
-          ".workspace-settings,.map-toolbar .mobile-settings-toggle,[aria-label='Close task workspace']",
-        )
-      )
-        return false;
-      const menu = workspace.current?.querySelector(".workspace-settings");
-      return !!menu && getComputedStyle(menu).display !== "none";
-    };
     const dismissOnClick = (event: MouseEvent) => {
-      if (!outsideMenu(event.target)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
+      const target = event.target;
+      if (
+        confirmComplete ||
+        pendingCompletion ||
+        !(target instanceof Node) ||
+        !workspace.current ||
+        workspace.current.contains(target)
+      )
+        return;
+      // The menu, map, composer, and planning views are one interactive workspace.
+      // Outside clicks dismiss it without blocking the clicked dashboard control.
       onClose();
     };
     document.addEventListener("click", dismissOnClick, true);
     return () => document.removeEventListener("click", dismissOnClick, true);
-  }, [confirmComplete, pendingCompletion]);
+  }, [confirmComplete, pendingCompletion, onClose]);
   useEffect(() => {
     if (!confirmComplete && !pendingCompletion) return;
     setSettingsOpen(true);

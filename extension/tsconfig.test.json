@@ -3,7 +3,8 @@
   "compilerOptions": {
     "incremental": true,
     "module": "node16",
-    "outDir": "dist/test"
+    "outDir": "dist/test",
+    "rootDir": ".."
   },
   "exclude": []
 }

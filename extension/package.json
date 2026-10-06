@@ -34,7 +34,9 @@
     "react-error-boundary": "^4.0.12",
     "react-intl": "^6.6.0",
     "tlds": "^1.248.0",
-    "webextension-polyfill": "^0.10.0"
+    "webextension-polyfill": "^0.10.0",
+    "@localflow/core": "0.1.0",
+    "@localflow/ui": "0.1.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",

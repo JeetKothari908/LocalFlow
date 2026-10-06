@@ -5,3 +5,8 @@
 /extension/dist/
 /extension/node_modules/
 .code-graph/
+/node_modules/
+/.npm-cache/
+/mobile-web/node_modules/
+/mobile-web/dist/
+/app/MobileWeb/

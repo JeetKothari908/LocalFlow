@@ -1,0 +1,151 @@
+@use '../tokens'
+
+.PlanOfDay
+    width: 360px
+    max-width: 40vw
+    margin-top: clamp(155px, 24vh, 250px)
+    position: relative
+    z-index: 25
+    color: var(--lf-text)
+    font-size: 16px
+    text-align: left
+    font-family: var(--lf-font)
+
+    .panel
+        background: var(--lf-surface)
+        border-radius: 14px
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18)
+        padding: 14px
+        backdrop-filter: blur(6px)
+        overflow: visible
+
+    .header
+        display: flex
+        align-items: center
+        justify-content: space-between
+        padding: 2px 2px 10px
+
+    .title
+        position: relative
+        display: flex
+        align-items: baseline
+        gap: 6px
+        font-size: 22px
+        font-weight: 500
+        color: var(--lf-text)
+
+    .date-wrap
+        position: relative
+        display: inline-flex
+
+    .date-picker
+        border: 0
+        background: var(--lf-soft)
+        color: var(--lf-text)
+        border-radius: 8px
+        cursor: pointer
+        font: inherit
+        font-size: 22px
+        font-weight: 500
+        padding: 2px var(--lf-space-2)
+
+        &:hover
+            background: var(--lf-soft)
+
+    .calendar
+        position: absolute
+        left: 0
+        bottom: calc(100% + 8px)
+        width: 176px
+        padding: 5px
+        background: var(--lf-soft)
+        border-radius: 10px
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15)
+        z-index: 60
+
+    .calendar-header
+        display: grid
+        grid-template-columns: 28px 1fr 28px
+        align-items: center
+        gap: var(--lf-space-1)
+        margin-bottom: var(--lf-space-1)
+        font-size: 13px
+        color: var(--lf-text)
+        font-weight: 500
+
+        span
+            text-align: center
+
+        button
+            border: 0
+            background: transparent
+            color: var(--lf-muted)
+            cursor: pointer
+            height: 22px
+            border-radius: 6px
+
+            &:hover
+                background: var(--lf-soft)
+
+    .calendar-grid
+        display: grid
+        grid-template-columns: repeat(7, 22px)
+        gap: 2px
+        justify-content: center
+
+        span,
+        button
+            box-sizing: border-box
+            width: 22px
+            height: 20px
+            display: inline-flex
+            align-items: center
+            justify-content: center
+            font-size: 11px
+            line-height: 1
+            color: var(--lf-text)
+
+        button
+            border: 0
+            background: transparent
+            cursor: pointer
+            border-radius: 6px
+            margin: 0
+            padding: 0
+            min-width: 0
+
+            &:hover
+                background: var(--lf-soft)
+
+            &.muted
+                color: var(--lf-muted)
+
+            &.selected
+                background: var(--lf-accent)
+                color: var(--lf-on-accent)
+
+    .calendar-grid.week
+        margin-bottom: 2px
+
+        span
+            color: var(--lf-muted)
+            font-size: 11px
+
+    textarea
+        width: 100%
+        min-height: 180px
+        max-height: 44vh
+        resize: none
+        border: 0
+        outline: none
+        background: transparent
+        color: var(--lf-text)
+        font: inherit
+        font-size: 13px
+        line-height: 1.45
+        padding: 0
+
+@media (max-width: 700px)
+    .PlanOfDay
+        width: min(94vw, 360px)
+        max-width: 94vw

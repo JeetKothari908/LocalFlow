@@ -16,7 +16,8 @@ function getTime(timeZone: string | null = null): Time {
 }
 
 // `defaultValue` here is irrelevant as it will be replaced in the provider
-export const TimeContext = React.createContext(getTime());
+import { TimeContext } from "../../../packages/ui/src/time";
+export { TimeContext } from "../../../packages/ui/src/time";
 
 const TimeProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
   const timeZone = useValue(db, "timeZone");

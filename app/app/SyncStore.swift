@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import CryptoKit
 
 @MainActor
 final class SyncStore: ObservableObject {
@@ -9,6 +10,23 @@ final class SyncStore: ObservableObject {
     @Published var isSyncing = false
     @Published var status = "Not synced yet"
     @Published var errorMessage: String?
+    @Published private(set) var documentEpoch = 0
+    private var documentDirty: [String: Bool] = [:]
+    private var documentBases: [String: JSONValue] = [:]
+    private var documentConflicts: [String: MobileConflict] = [:]
+    private var localRevisions: [String: Int] = [:]
+    private var commitReceipts: [String: MobileReceipt] = [:]
+    private var receiptOrder: [String] = []
+    private var preservedDrafts: [String: JSONValue] = [:]
+    private var documentBackups: [String: JSONValue] = [:]
+    private var editorDrafts: [String: JSONValue] = [:]
+    private var legacyCaching = true
+    private var syncedTimeZone: String?
+    private var lastDocuments: [String: JSONValue] = [:]
+    private var storageURL = MobileCache.defaultURL
+    private var localStorageBlocked = false
+    private var persistenceError: String?
+    private var networkEnabled = true
     @Published var canUndoTasks = false
     @Published var todoConflict: TodoSyncConflict?
     @Published var taskToOpen: String?
@@ -19,12 +37,12 @@ final class SyncStore: ObservableObject {
     private var baseTodoValue: JSONValue?
     private var todoDocumentUnavailable = false
 
-    @Published var serverURL = UserDefaults.standard.string(forKey: "sync.serverURL") ?? "https://raspberrypi.tail2db278.ts.net" {
-        didSet { UserDefaults.standard.set(serverURL, forKey: "sync.serverURL"); if oldValue != serverURL { invalidateTaskBaseline() } }
+    @Published var serverURL = UserDefaults.standard.string(forKey: "sync.serverURL") ?? "" {
+        didSet { if legacyCaching { UserDefaults.standard.set(serverURL, forKey: "sync.serverURL") }; if oldValue != serverURL { invalidateTaskBaseline() } }
     }
 
-    @Published var authToken = UserDefaults.standard.string(forKey: "sync.authToken") ?? "jfiweokgerhotrwhtr" {
-        didSet { UserDefaults.standard.set(authToken, forKey: "sync.authToken"); if oldValue != authToken { invalidateTaskBaseline() } }
+    @Published var authToken = UserDefaults.standard.string(forKey: "sync.authToken") ?? "" {
+        didSet { if legacyCaching { UserDefaults.standard.set(authToken, forKey: "sync.authToken") }; if oldValue != authToken { invalidateTaskBaseline() } }
     }
 
     private let storeName = "tabliss/config"
@@ -37,23 +55,57 @@ final class SyncStore: ObservableObject {
     private var versions: [String: Int] = [:]
     private let clientId = SyncStore.loadClientId()
     private let syncLock = AsyncLock()
+    private let transport: (URLRequest) async throws -> (Data, URLResponse)
     static let defaultDueTime = "23:59"
 
-    init() {
-        let cached = Self.load(TodoData.self, key: "cache.todos") ?? TodoData()
+    init(storageURL: URL? = nil, loadLegacy: Bool = true, syncEnabled: Bool = true, legacyDefaults: UserDefaults? = nil, transport: @escaping (URLRequest) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(for: $0) }) {
+        self.transport = transport
+        self.storageURL = storageURL ?? MobileCache.defaultURL
+        self.networkEnabled = syncEnabled
+        self.legacyCaching = loadLegacy && legacyDefaults == nil
+        if !loadLegacy {
+            do {
+                if let cache = try MobileCache.read(from: self.storageURL) { install(cache) }
+                lastDocuments = try currentDocuments()
+            } catch { localStorageBlocked = true; persistenceError = error.localizedDescription }
+            return
+        }
+        let migrationDefaults = legacyDefaults ?? .standard
+        if let legacyDefaults {
+            serverURL = legacyDefaults.string(forKey: "sync.serverURL") ?? ""
+            authToken = legacyDefaults.string(forKey: "sync.authToken") ?? ""
+            todoDirty = legacyDefaults.bool(forKey: "cache.todos.dirty")
+        }
+        let cached = Self.load(TodoData.self, key: "cache.todos", defaults: migrationDefaults) ?? TodoData()
         todos = TaskGraph.migrate(cached)
-        baseTodos = Self.load(TodoData.self, key: "cache.todos.base")
-        baseTodoValue = Self.load(JSONValue.self, key: "cache.todos.baseValue")
-        versions = Self.load([String: Int].self, key: "cache.sync.versions") ?? [:]
-        todoConflict = Self.load(TodoSyncConflict.self, key: "cache.todos.conflict")
-        if UserDefaults.standard.string(forKey: "cache.todos.scope") != serverURL {
+        baseTodos = Self.load(TodoData.self, key: "cache.todos.base", defaults: migrationDefaults)
+        baseTodoValue = Self.load(JSONValue.self, key: "cache.todos.baseValue", defaults: migrationDefaults)
+        versions = Self.load([String: Int].self, key: "cache.sync.versions", defaults: migrationDefaults) ?? [:]
+        todoConflict = Self.load(TodoSyncConflict.self, key: "cache.todos.conflict", defaults: migrationDefaults)
+        if migrationDefaults.string(forKey: "cache.todos.scope") != serverURL {
             versions.removeValue(forKey: todoDataKey); baseTodos = nil; baseTodoValue = nil; todoConflict = nil
             todoDirty = !todos.items.isEmpty || !todos.customLists.isEmpty || !todos.occurrences.isEmpty
         }
-        taskToOpen = UserDefaults.standard.string(forKey: "todo.pendingTaskId")
-        if cached.schemaVersion < 2 { todoDirty = true; Self.save(cached, key: "cache.todos.legacyBackup") }
-        notes = Self.load(NotesData.self, key: "cache.notes") ?? NotesData()
-        plan = Self.load(PlanData.self, key: "cache.plan") ?? PlanData()
+        taskToOpen = migrationDefaults.string(forKey: "todo.pendingTaskId")
+        if cached.schemaVersion < 2 { todoDirty = true; migrationDefaults.set(try? JSONEncoder().encode(cached), forKey: "cache.todos.legacyBackup") }
+        notes = Self.load(NotesData.self, key: "cache.notes", defaults: migrationDefaults) ?? NotesData()
+        plan = Self.load(PlanData.self, key: "cache.plan", defaults: migrationDefaults) ?? PlanData()
+        do {
+            if let cache = try MobileCache.read(from: self.storageURL) {
+                install(cache)
+                if cache.serverScope != serverURL { invalidateTaskBaseline() }
+            } else {
+                // A legacy cache may contain offline changes. Without a baseline,
+                // preserve it for review instead of letting the first refresh replace it.
+                documentDirty["notes"] = !notes.items.isEmpty
+                documentDirty["plan"] = !plan.plans.isEmpty
+            }
+            lastDocuments = try currentDocuments()
+        } catch {
+            localStorageBlocked = true
+            persistenceError = "Local data could not be opened: \(error.localizedDescription)"
+            errorMessage = persistenceError
+        }
     }
 
     var activeTodos: [TodoItem] {
@@ -69,6 +121,8 @@ final class SyncStore: ObservableObject {
     }
 
     func refresh() async {
+        guard persistenceError == nil else { errorMessage = persistenceError; return }
+        guard networkEnabled, !localStorageBlocked, !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { status = "Saved on this device"; return }
         await syncLock.acquire()
         await performSync {
             let snapshot = try await self.requestSnapshot()
@@ -77,10 +131,14 @@ final class SyncStore: ObservableObject {
         }
         await syncLock.release()
         if todoDirty && todoConflict == nil { Task { await pushTodos() } }
+        if documentDirty["notes"] == true { Task { await pushNotes() } }
+        if documentDirty["plan"] == true { Task { await pushPlan() } }
     }
 
     private func invalidateTaskBaseline() {
-        versions.removeValue(forKey: todoDataKey)
+        versions.removeAll()
+        documentBases.removeAll(); documentConflicts.removeAll()
+        documentDirty["notes"] = !notes.items.isEmpty; documentDirty["plan"] = !plan.plans.isEmpty
         baseTodos = nil; baseTodoValue = nil; todoConflict = nil; todoDocumentUnavailable = false
         taskUndo.removeAll(); canUndoTasks = false
         todoDirty = !todos.items.isEmpty || !todos.customLists.isEmpty
@@ -247,6 +305,7 @@ final class SyncStore: ObservableObject {
         )
         notes.selectedNoteId = id
         notes.currentFolderId = nil
+        documentDirty["notes"] = true
         persist()
         Task { await pushNotes() }
     }
@@ -257,6 +316,7 @@ final class SyncStore: ObservableObject {
         notes.items[index].name = normalizedTitle
         notes.items[index].contents = Self.noteContents(title: normalizedTitle, body: contents)
         notes.selectedNoteId = note.id
+        documentDirty["notes"] = true
         persist()
         Task { await pushNotes() }
     }
@@ -268,19 +328,22 @@ final class SyncStore: ObservableObject {
         if notes.selectedNoteId == note.id {
             notes.selectedNoteId = nil
         }
+        documentDirty["notes"] = true
         persist()
         Task { await pushNotes() }
     }
 
     func updatePlan(date: String, contents: String) {
         plan.plans[date] = contents
-        plan.activeDate = Self.todayKey()
+        plan.activeDate = Self.planningDayKey()
         plan.selectedDate = date
+        documentDirty["plan"] = true
         persist()
         Task { await pushPlan() }
     }
 
     func pushTodos() async {
+        guard networkEnabled, !localStorageBlocked, persistenceError == nil, !serverURL.isEmpty else { return }
         await syncLock.acquire()
         await performSync {
             guard self.todoDirty, self.todoConflict == nil, !self.todoDocumentUnavailable else { return }
@@ -316,7 +379,9 @@ final class SyncStore: ObservableObject {
 
     func resolveTodoConflict(useLocal: Bool) {
         guard let conflict = todoConflict else { return }
-        Self.save(useLocal ? conflict.remote : todos, key: "cache.todos.conflictBackup")
+        let previous = cacheState()
+        let backup = useLocal ? conflict.remote : todos
+        documentBackups["tasks"] = try? JSONValue(encoding: backup)
         baseTodos = conflict.remote
         baseTodoValue = conflict.remoteValue
         let local = todos
@@ -326,7 +391,8 @@ final class SyncStore: ObservableObject {
         taskUndo.removeAll(); canUndoTasks = false
         versions[todoDataKey] = conflict.version
         todoConflict = nil
-        persist()
+        guard persist() else { install(previous); return }
+        if legacyCaching { Self.save(backup, key: "cache.todos.conflictBackup") }
         if todoDirty { Task { await pushTodos() } }
     }
 
@@ -355,33 +421,60 @@ final class SyncStore: ObservableObject {
         }
     }
 
-    func pushNotes() async {
-        await push(value: notes, key: notesDataKey, label: "Notes saved")
-    }
+    func pushNotes() async { await pushDocument(.notes) }
+    func pushPlan() async { await pushDocument(.plan) }
 
-    func pushPlan() async {
-        await push(value: plan, key: planDataKey, label: "Plan saved")
-    }
-
-    private func push<T: Encodable>(value: T, key: String, label: String) async {
+    private func pushDocument(_ key: MobileDocumentKey) async {
+        guard networkEnabled, !localStorageBlocked, persistenceError == nil, !serverURL.isEmpty else { return }
         await syncLock.acquire()
         await performSync {
-            let response = try await self.post(
-                changes: [
-                    RemoteChange(
-                        key: key,
-                        value: try JSONValue(encoding: value, encoder: self.encoder),
-                        deleted: false,
-                        baseVersion: self.versions[key]
-                    )
-                ]
-            )
-            if let version = response.versions?[key] {
-                self.versions[key] = version
+            guard self.documentDirty[key.rawValue] == true, self.documentConflicts[key.rawValue] == nil else { return }
+            if self.versions[key.serverKey] == nil { self.apply(snapshot: try await self.requestSnapshot()) }
+            guard self.documentDirty[key.rawValue] == true, self.documentConflicts[key.rawValue] == nil else { return }
+            let submitted = try self.currentDocuments()[key.rawValue]!
+            do {
+                let response = try await self.post(changes: [RemoteChange(key: key.serverKey, value: submitted, baseVersion: self.versions[key.serverKey] ?? 0)])
+                self.documentBases[key.rawValue] = submitted
+                self.versions[key.serverKey] = response.versions?[key.serverKey] ?? self.versions[key.serverKey]
+                self.documentDirty[key.rawValue] = try self.currentDocuments()[key.rawValue] != submitted
+                self.status = self.documentDirty[key.rawValue] == true ? "Saved locally; syncing" : "Synced"
+                self.persist()
+                if self.documentDirty[key.rawValue] == true { Task { await self.pushDocument(key) } }
+            } catch SyncError.conflict {
+                self.apply(snapshot: try await self.requestSnapshot())
+                if self.documentConflicts[key.rawValue] == nil { Task { await self.pushDocument(key) } }
             }
-            self.status = label
         }
         await syncLock.release()
+    }
+
+    private func applyDocument(_ key: MobileDocumentKey, change: RemoteChange?) {
+        let name = key.rawValue
+        do {
+            let empty: JSONValue = try key == .notes ? JSONValue(encoding: NotesData()) : JSONValue(encoding: PlanData())
+            let remote = change?.deleted == true ? empty : (change?.value ?? empty)
+            let local = try currentDocuments()[name]!
+            let version = change?.version ?? 0
+            if let previous = versions[key.serverKey], version < previous && remote != documentBases[name] {
+                throw MobileDocumentError.invalid("The server version moved backwards. Review both copies.")
+            }
+            if documentDirty[name] == true {
+                let merged: JSONValue
+                if local == remote { merged = local }
+                else if change == nil && documentBases[name] == nil { merged = local }
+                else if let base = documentBases[name] { merged = try MobileDocumentMerge.merge(base: base, local: local, remote: remote) ?? empty }
+                else { throw MobileDocumentError.invalid("Local changes have no matching sync baseline. Both copies are preserved.") }
+                try assignDocument(key, value: merged)
+                documentDirty[name] = merged != remote
+            } else { try assignDocument(key, value: remote) }
+            documentBases[name] = remote
+            versions[key.serverKey] = version
+            documentConflicts.removeValue(forKey: name)
+        } catch {
+            let remote = change?.value ?? .null
+            documentConflicts[name] = MobileConflict(key: name, detail: error.localizedDescription, local: (try? currentDocuments()[name]) ?? .null, remote: remote, version: change?.version ?? 0)
+            errorMessage = "\(name.capitalized) changes need review. Both copies are preserved."
+        }
     }
 
     private func performSync(_ operation: @escaping () async throws -> Void) async {
@@ -403,7 +496,7 @@ final class SyncStore: ObservableObject {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("no-cache", forHTTPHeaderField: "cache-control")
         applyHeaders(to: &request)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await transport(request)
         guard requestedURL == serverURL && requestedToken == authToken else { throw SyncError.connectionChanged }
         try validate(response: response)
         return try decoder.decode(RemoteSnapshot.self, from: data)
@@ -415,15 +508,17 @@ final class SyncStore: ObservableObject {
         request.httpMethod = "POST"
         applyHeaders(to: &request)
         request.httpBody = try encoder.encode(RemoteSnapshot(changes: changes, clientId: clientId))
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await transport(request)
         guard requestedURL == serverURL && requestedToken == authToken else { throw SyncError.connectionChanged }
         try validate(response: response)
         return try decoder.decode(RemoteWriteResponse.self, from: data)
     }
 
     private func apply(snapshot: RemoteSnapshot) {
-        for change in snapshot.changes {
-            if change.key != todoDataKey, let version = change.version { versions[change.key] = version }
+        let previous = cacheState()
+        if let setting = snapshot.changes.first(where: { $0.key == "timeZone" }) {
+            if case .string(let zone) = setting.value, TimeZone(identifier: zone) != nil { syncedTimeZone = zone }
+            else { syncedTimeZone = nil }
         }
         let values = Dictionary(uniqueKeysWithValues: snapshot.changes.compactMap { change -> (String, JSONValue)? in
             guard change.deleted != true, let value = change.value else { return nil }
@@ -478,20 +573,15 @@ final class SyncStore: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         }
-        decodeIfPresent(NotesData.self, key: notesDataKey, values: values) { notes = $0 }
-        if values[planDataKey] != nil {
-            decodeIfPresent(PlanData.self, key: planDataKey, values: values) { plan = $0 }
-        } else {
-            decodeIfPresent(PlanData.self, key: legacyPlanDataKey, values: values) { plan = $0 }
+        applyDocument(.notes, change: snapshot.changes.first { $0.key == notesDataKey })
+        let currentPlan = snapshot.changes.first { $0.key == planDataKey }
+        let legacyPlan = snapshot.changes.first { $0.key == legacyPlanDataKey }
+        if currentPlan == nil, let legacyPlan, documentBases["plan"] == nil {
+            if documentDirty["plan"] != true, let value = legacyPlan.value { try? assignDocument(.plan, value: value) }
+            documentDirty["plan"] = true
         }
-
-        if plan.selectedDate == nil {
-            plan.selectedDate = Self.todayKey()
-        }
-        if plan.activeDate == nil {
-            plan.activeDate = Self.todayKey()
-        }
-        persist()
+        applyDocument(.plan, change: currentPlan)
+        if !persist() { install(previous) }
     }
 
     private func decodeIfPresent<T: Decodable>(_ type: T.Type, key: String, values: [String: JSONValue], assign: (T) -> Void) {
@@ -612,7 +702,234 @@ final class SyncStore: ObservableObject {
         return body.isEmpty ? trimmedTitle : "\(trimmedTitle)\n\(body)"
     }
 
-    private func persist() {
+    static func planningDayKey(now: Date = Date()) -> String {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: now)
+        let reset = calendar.date(byAdding: .hour, value: 8, to: start) ?? start
+        return TaskGraph.dateKey(now < reset ? (calendar.date(byAdding: .day, value: -1, to: now) ?? now) : now)
+    }
+
+    private func currentDocuments() throws -> [String: JSONValue] {
+        ["tasks": try JSONValue(encoding: todos), "notes": try JSONValue(encoding: notes), "plan": try JSONValue(encoding: plan)]
+    }
+
+    private func cacheState() -> MobileCache {
+        MobileCache(epoch: documentEpoch, serverScope: serverURL, todos: todos, notes: notes, plan: plan,
+                    baseTodos: baseTodos, baseTodoValue: baseTodoValue, todoDirty: todoDirty,
+                    todoConflict: todoConflict, versions: versions, documentDirty: documentDirty,
+                    documentBases: documentBases, documentConflicts: documentConflicts,
+                    revisions: localRevisions, receipts: commitReceipts, receiptOrder: receiptOrder,
+                    drafts: preservedDrafts, backups: documentBackups, editorDrafts: editorDrafts, timeZone: syncedTimeZone)
+    }
+
+    private func install(_ cache: MobileCache) {
+        documentEpoch = cache.epoch ?? 0
+        todos = cache.todos; notes = cache.notes; plan = cache.plan
+        baseTodos = cache.baseTodos; baseTodoValue = cache.baseTodoValue; todoDirty = cache.todoDirty
+        todoConflict = cache.todoConflict; versions = cache.versions
+        documentDirty = cache.documentDirty; documentBases = cache.documentBases; documentConflicts = cache.documentConflicts
+        localRevisions = cache.revisions; commitReceipts = cache.receipts; receiptOrder = cache.receiptOrder
+        preservedDrafts = cache.drafts; documentBackups = cache.backups
+        editorDrafts = cache.editorDrafts
+        syncedTimeZone = cache.timeZone
+        lastDocuments = (try? currentDocuments()) ?? [:]
+    }
+
+    @discardableResult private func persist() -> Bool {
+        guard !localStorageBlocked else { return false }
+        do {
+            let documents = try currentDocuments()
+            var next = localRevisions
+            for (key, value) in documents where lastDocuments[key] != value { next[key, default: 0] += 1 }
+            var cache = cacheState(); cache.revisions = next; cache.epoch = documentEpoch + 1
+            try cache.write(to: storageURL)
+            localRevisions = next; lastDocuments = documents; persistenceError = nil
+            if legacyCaching { persistLegacyCaches() }
+            documentEpoch += 1
+            return true
+        } catch {
+            persistenceError = "Could not save on this device: \(error.localizedDescription)"
+            errorMessage = persistenceError
+            return false
+        }
+    }
+
+    func mobileSnapshot() throws -> MobileSnapshot {
+        guard !localStorageBlocked else { throw MobileDocumentError.invalid(persistenceError ?? "Local data needs recovery.") }
+        let values = try currentDocuments()
+        var documents: [String: MobileDocumentSnapshot] = [:]
+        for key in MobileDocumentKey.allCases {
+            documents[key.rawValue] = MobileDocumentSnapshot(value: values[key.rawValue]!, revision: localRevisions[key.rawValue] ?? 0, pending: key == .tasks ? todoDirty : documentDirty[key.rawValue] == true)
+        }
+        var conflicts = Array(documentConflicts.values)
+        if let conflict = todoConflict {
+            conflicts.append(MobileConflict(key: "tasks", detail: conflict.detail, local: values["tasks"]!, remote: try JSONValue(encoding: conflict.remote), version: conflict.version))
+        }
+        for index in conflicts.indices { conflicts[index].local = values[conflicts[index].key] ?? conflicts[index].local }
+        return MobileSnapshot(epoch: documentEpoch, documents: documents, status: status, error: persistenceError ?? errorMessage,
+                              syncing: isSyncing, timeZone: syncedTimeZone, conflicts: conflicts, drafts: preservedDrafts)
+    }
+
+    private func assignDocument(_ key: MobileDocumentKey, value: JSONValue) throws {
+        switch key {
+        case .tasks:
+            let next = try value.decode(TodoData.self)
+            guard next.schemaVersion == 2 else { throw MobileDocumentError.invalid("Unsupported task schema. Update LocalFlow.") }
+            try TaskGraph.validate(next)
+            todos = next
+        case .notes:
+            let next = try value.decode(NotesData.self)
+            var nodes: [String: NoteNode] = [:]
+            for node in next.items {
+                guard !node.id.isEmpty, ["note", "folder"].contains(node.type), nodes[node.id] == nil else { throw MobileDocumentError.invalid("Invalid or duplicate note.") }
+                nodes[node.id] = node
+            }
+            for node in next.items {
+                var seen: Set<String> = [node.id], parent = node.parentId
+                while let id = parent {
+                    guard seen.insert(id).inserted, let ancestor = nodes[id], ancestor.type == "folder" else { throw MobileDocumentError.invalid("Invalid note folder hierarchy.") }
+                    parent = ancestor.parentId
+                }
+            }
+            notes = next
+        case .plan:
+            let next = try value.decode(PlanData.self)
+            guard next.plans.keys.allSatisfy({ TaskGraph.date($0) != nil }) else { throw MobileDocumentError.invalid("Invalid planning date.") }
+            plan = next
+        }
+    }
+
+    func commitMobile(_ commit: MobileCommit, draftDecision: Bool? = nil) throws -> MobileCommitReply {
+        guard !localStorageBlocked, commit.transactionId.count <= 160, !commit.transactionId.isEmpty else { throw MobileDocumentError.invalid("Invalid local commit.") }
+        let canonical = JSONEncoder(); canonical.outputFormatting = [.sortedKeys]
+        let fingerprint = SHA256.hash(data: try canonical.encode(commit.value)).map { String(format: "%02x", $0) }.joined()
+        let operation = draftDecision.map { $0 ? "keepDraft" : "discardDraft" } ?? "commit"
+        if let receipt = commitReceipts[commit.transactionId] {
+            guard receipt.key == commit.key, receipt.expectedRevision == commit.expectedRevision, receipt.fingerprint == fingerprint, (receipt.operation ?? "commit") == operation else { throw MobileDocumentError.invalid("Transaction ID was reused for a different edit.") }
+            return MobileCommitReply(accepted: true, snapshot: try mobileSnapshot())
+        }
+        guard commit.expectedRevision == (localRevisions[commit.key.rawValue] ?? 0) else {
+            try preserveMobileDraft(commit.key, value: commit.value)
+            return MobileCommitReply(accepted: false, snapshot: try mobileSnapshot(), error: "Another change arrived. Your draft has been preserved; review it before saving.")
+        }
+        if draftDecision != nil {
+            guard preservedDrafts[commit.key.rawValue] == commit.value else { throw MobileDocumentError.invalid("The preserved draft changed. Reload and review it again.") }
+        } else if preservedDrafts[commit.key.rawValue] != nil {
+            throw MobileDocumentError.invalid("Review the preserved draft before saving this document.")
+        }
+        let previous = cacheState()
+        let replaced = try currentDocuments()[commit.key.rawValue]!
+        if draftDecision != false {
+            try assignDocument(commit.key, value: commit.value)
+            if commit.key == .tasks { todoDirty = true; taskUndo.removeAll(); canUndoTasks = false }
+            else { documentDirty[commit.key.rawValue] = true }
+        }
+        if let keep = draftDecision { documentBackups[commit.key.rawValue] = keep ? replaced : commit.value }
+        commitReceipts[commit.transactionId] = MobileReceipt(key: commit.key, expectedRevision: commit.expectedRevision, fingerprint: fingerprint, operation: operation)
+        receiptOrder.append(commit.transactionId)
+        if receiptOrder.count > 128 { commitReceipts.removeValue(forKey: receiptOrder.removeFirst()) }
+        preservedDrafts.removeValue(forKey: commit.key.rawValue)
+        status = "Saved locally"
+        guard persist() else {
+            let failure = persistenceError ?? "Local save failed."
+            install(previous)
+            throw MobileDocumentError.invalid(failure)
+        }
+        if draftDecision != false { Task { if commit.key == .tasks { await pushTodos() } else { await pushDocument(commit.key) } } }
+        return MobileCommitReply(accepted: true, snapshot: try mobileSnapshot())
+    }
+
+    func preserveMobileDraft(_ key: MobileDocumentKey, value: JSONValue) throws {
+        let previous = cacheState()
+        preservedDrafts[key.rawValue] = value
+        guard persist() else { install(previous); throw MobileDocumentError.invalid(persistenceError ?? "Could not preserve the draft.") }
+    }
+
+    func discardMobileDraft(_ key: MobileDocumentKey) throws {
+        let previous = cacheState()
+        // Retain the discarded draft as an exportable recovery copy.
+        documentBackups[key.rawValue] = preservedDrafts[key.rawValue] ?? documentBackups[key.rawValue]
+        preservedDrafts.removeValue(forKey: key.rawValue)
+        guard persist() else {
+            install(previous)
+            throw MobileDocumentError.invalid(persistenceError ?? "Could not save the draft decision.")
+        }
+    }
+
+    func resolveMobileConflict(_ key: MobileDocumentKey, useLocal: Bool) throws {
+        if key == .tasks {
+            resolveTodoConflict(useLocal: useLocal)
+            if let persistenceError { throw MobileDocumentError.invalid(persistenceError) }
+            return
+        }
+        guard let conflict = documentConflicts[key.rawValue] else { return }
+        let previous = cacheState()
+        let local = try currentDocuments()[key.rawValue]!
+        documentBackups[key.rawValue] = useLocal ? conflict.remote : local
+        let empty = try key == .notes ? JSONValue(encoding: NotesData()) : JSONValue(encoding: PlanData())
+        let remote = conflict.remote == .null ? empty : conflict.remote
+        if !useLocal { try assignDocument(key, value: remote) }
+        documentBases[key.rawValue] = remote
+        versions[key.serverKey] = conflict.version
+        documentDirty[key.rawValue] = useLocal
+        documentConflicts.removeValue(forKey: key.rawValue)
+        guard persist() else {
+            install(previous)
+            throw MobileDocumentError.invalid(persistenceError ?? "Could not save conflict resolution.")
+        }
+        if useLocal { Task { await pushDocument(key) } }
+    }
+
+    func mobileBackup(_ key: MobileDocumentKey) throws -> JSONValue {
+        if let value = documentBackups[key.rawValue] { return value }
+        if key == .tasks, let data = Self.load(TodoData.self, key: "cache.todos.conflictBackup") { return try JSONValue(encoding: data) }
+        throw MobileDocumentError.invalid("No preserved backup for this document.")
+    }
+
+    func readMobileEditorDraft(_ id: String) -> JSONValue { editorDrafts[id] ?? .null }
+
+    func writeMobileEditorDraft(_ id: String, value: JSONValue) throws {
+        guard id.count <= 200 else { throw MobileDocumentError.invalid("Invalid task draft.") }
+        if value == .null { editorDrafts.removeValue(forKey: id) } else { editorDrafts[id] = value }
+        guard persist() else { throw MobileDocumentError.invalid(persistenceError ?? "Could not save the task draft.") }
+    }
+
+    func mobileHistory(_ key: MobileDocumentKey) async throws -> JSONValue {
+        try await historyRequest(path: "/v1/history", query: [URLQueryItem(name: "store", value: storeName), URLQueryItem(name: "key", value: key.serverKey), URLQueryItem(name: "limit", value: "50")])
+    }
+
+    func restoreMobileRevision(_ key: MobileDocumentKey, version: Int, baseVersion: Int) async throws -> MobileSnapshot {
+        await syncLock.acquire()
+        do {
+            let pending = key == .tasks ? todoDirty || todoConflict != nil : documentDirty[key.rawValue] == true || documentConflicts[key.rawValue] != nil
+            guard !pending, preservedDrafts[key.rawValue] == nil else { throw MobileDocumentError.invalid("Save or resolve local changes before restoring a server revision.") }
+            documentBackups[key.rawValue] = try currentDocuments()[key.rawValue]
+            guard persist() else { throw MobileDocumentError.invalid(persistenceError ?? "Could not preserve the current version.") }
+            _ = try await historyRequest(path: "/v1/history/restore", body: .object([
+                "store": .string(storeName), "key": .string(key.serverKey), "version": .number(Double(version)),
+                "baseVersion": .number(Double(baseVersion)), "clientId": .string(clientId), "todoSchemaVersion": .number(2)
+            ]))
+            apply(snapshot: try await requestSnapshot())
+            await syncLock.release()
+            return try mobileSnapshot()
+        } catch { await syncLock.release(); throw error }
+    }
+
+    private func historyRequest(path: String, query: [URLQueryItem] = [], body: JSONValue? = nil) async throws -> JSONValue {
+        let scope = serverURL, token = authToken
+        guard !scope.isEmpty, var url = URLComponents(string: scope.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path) else { throw MobileDocumentError.invalid("Configure a sync server to use revision history.") }
+        if !query.isEmpty { url.queryItems = query }
+        guard let endpoint = url.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: endpoint)
+        applyHeaders(to: &request)
+        if let body { request.httpMethod = "POST"; request.httpBody = try encoder.encode(body) }
+        let (data, response) = try await transport(request)
+        guard scope == serverURL, token == authToken else { throw SyncError.connectionChanged }
+        try validate(response: response)
+        return try decoder.decode(JSONValue.self, from: data)
+    }
+
+    private func persistLegacyCaches() {
         Self.save(todos, key: "cache.todos")
         Self.save(baseTodos, key: "cache.todos.base")
         Self.save(baseTodoValue, key: "cache.todos.baseValue")
@@ -631,8 +948,8 @@ final class SyncStore: ObservableObject {
         }
     }
 
-    private static func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+    private static func load<T: Decodable>(_ type: T.Type, key: String, defaults: UserDefaults = .standard) -> T? {
+        guard let data = defaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(type, from: data)
     }
 }

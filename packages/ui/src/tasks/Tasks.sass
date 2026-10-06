@@ -1,0 +1,1243 @@
+@use '../tokens'
+
+.TodoPlus .dashboard-list
+    display: contents
+
+.TodoPlus, .TaskWorkspace
+    color: var(--lf-text)
+    font-family: var(--lf-font)
+    font-size: 14px
+    text-align: left
+    line-height: 1.45
+    box-sizing: border-box
+
+.TodoPlus *, .TodoPlus *::before, .TodoPlus *::after, .TaskWorkspace *, .TaskWorkspace *::before, .TaskWorkspace *::after
+    box-sizing: border-box
+
+.TodoPlus button, .TodoPlus input, .TodoPlus select, .TodoPlus textarea, .TaskWorkspace button, .TaskWorkspace input, .TaskWorkspace select, .TaskWorkspace textarea
+    font: inherit
+
+.TodoPlus button, .TaskWorkspace button
+    color: inherit
+    border: 1px solid var(--lf-border)
+    border-radius: 7px
+    background: var(--lf-surface)
+    padding: 6px 10px
+    cursor: pointer
+    text-align: left
+
+.TodoPlus button:hover, .TaskWorkspace button:hover
+    background: var(--lf-soft)
+
+.TodoPlus button:disabled, .TaskWorkspace button:disabled
+    opacity: 0.5
+    cursor: default
+
+.TodoPlus button:focus-visible, .TodoPlus input:focus-visible, .TodoPlus select:focus-visible, .TodoPlus textarea:focus-visible, .TodoPlus summary:focus-visible, .TaskWorkspace button:focus-visible, .TaskWorkspace input:focus-visible, .TaskWorkspace select:focus-visible, .TaskWorkspace textarea:focus-visible, .TaskWorkspace summary:focus-visible
+    outline: 2px solid var(--lf-accent)
+    outline-offset: 3px
+
+.TodoPlus input, .TodoPlus select, .TodoPlus textarea, .TaskWorkspace input, .TaskWorkspace select, .TaskWorkspace textarea
+    color: var(--lf-text)
+    min-width: 0
+    max-width: 100%
+    background: var(--lf-surface)
+    border: 1px solid var(--lf-border)
+    border-radius: 7px
+    padding: 7px 9px
+
+.TodoPlus input[type=checkbox], .TaskWorkspace input[type=checkbox]
+    accent-color: var(--lf-accent)
+
+.TodoPlus input:disabled, .TaskWorkspace input:disabled
+    background: var(--lf-soft)
+
+.TodoPlus textarea, .TaskWorkspace textarea
+    resize: vertical
+
+.TodoPlus button.primary, .TaskWorkspace button.primary
+    background: var(--lf-accent)
+    color: var(--lf-on-accent)
+    border-color: var(--lf-accent)
+
+.TodoPlus button.primary:hover, .TaskWorkspace button.primary:hover
+    background: var(--lf-accent)
+
+.TodoPlus button.danger, .TodoPlus .task-error, .TaskWorkspace button.danger, .TaskWorkspace .task-error
+    color: var(--lf-danger)
+
+.TodoPlus .task-error, .TaskWorkspace .task-error
+    background: var(--lf-soft)
+    border-radius: 7px
+    padding: 9px var(--lf-space-3)
+    overflow-wrap: anywhere
+
+.TodoPlus .empty-state, .TodoPlus .planning-note, .TodoPlus .timeline-legend, .TaskWorkspace .empty-state, .TaskWorkspace .planning-note, .TaskWorkspace .timeline-legend
+    color: var(--lf-muted)
+    margin: var(--lf-space-3) 0
+    font-size: 13px
+
+.TodoPlus .planning-note span, .TaskWorkspace .planning-note span
+    display: block
+    margin-top: 7px
+    color: var(--lf-accent)
+
+.TodoPlus .task-row, .TaskWorkspace .task-row
+    position: relative
+    display: grid
+    grid-template-columns: 12px 22px minmax(0, 1fr) 24px
+    align-items: start
+    gap: 6px
+    padding: 10px 0
+    border-bottom: 1px solid var(--lf-border)
+
+.TodoPlus .task-highlighted, .TaskWorkspace .task-highlighted
+    background: var(--lf-soft)
+    outline: 2px solid var(--lf-accent)
+    outline-offset: -2px
+
+.TodoPlus .outline-guides, .TaskWorkspace .outline-guides
+    position: absolute
+    inset: 0
+    pointer-events: none
+
+.TodoPlus .outline-guides span, .TaskWorkspace .outline-guides span
+    position: absolute
+    width: 14px
+    height: 100%
+
+.TodoPlus .outline-guides .outline-vertical, .TodoPlus .outline-guides .outline-elbow, .TaskWorkspace .outline-guides .outline-vertical, .TaskWorkspace .outline-guides .outline-elbow
+    border-left: 1px solid var(--lf-border)
+
+.TodoPlus .outline-guides .outline-elbow::after, .TaskWorkspace .outline-guides .outline-elbow::after
+    content: ""
+    position: absolute
+    top: 21px
+    width: 12px
+    border-top: 1px solid var(--lf-border)
+
+.TodoPlus .outline-guides .outline-last, .TaskWorkspace .outline-guides .outline-last
+    height: 21px
+
+.TodoPlus .outline-guides .outline-last::after, .TaskWorkspace .outline-guides .outline-last::after
+    top: 100%
+
+.TodoPlus .task-check, .TaskWorkspace .task-check
+    width: 22px
+    height: 22px
+    border: 1.5px solid var(--lf-border)
+    border-radius: 6px
+    padding: 0
+    text-align: center
+    line-height: 20px
+    margin-top: 1px
+    font-size: 14px
+    flex-shrink: 0
+
+.TodoPlus .task-check[aria-pressed=true], .TaskWorkspace .task-check[aria-pressed=true]
+    background: var(--lf-accent)
+    color: var(--lf-on-accent)
+    border-color: var(--lf-accent)
+
+.TodoPlus .task-row-body, .TaskWorkspace .task-row-body
+    min-width: 0
+
+.TodoPlus .task-row-actions, .TaskWorkspace .task-row-actions
+    display: flex
+    flex-wrap: wrap
+    gap: 5px
+    padding: 9px 0
+
+.TodoPlus .task-row-actions button, .TaskWorkspace .task-row-actions button
+    font-size: 11px
+
+.TodoPlus .schedule-analysis, .TaskWorkspace .schedule-analysis
+    border-top: 1px solid var(--lf-border)
+    margin-top: var(--lf-space-5)
+    padding-top: 6px
+
+.TodoPlus .schedule-analysis p button, .TaskWorkspace .schedule-analysis p button
+    font-size: 12px
+    margin: 2px
+
+.TodoPlus .schedule-table, .TaskWorkspace .schedule-table
+    overflow-x: auto
+
+.TodoPlus .schedule-table table, .TaskWorkspace .schedule-table table
+    width: 100%
+    font-size: 12px
+    border-collapse: collapse
+
+.TodoPlus .schedule-table th, .TodoPlus .schedule-table td, .TaskWorkspace .schedule-table th, .TaskWorkspace .schedule-table td
+    padding: var(--lf-space-2)
+    border-bottom: 1px solid var(--lf-border)
+    vertical-align: top
+    text-align: left
+    min-width: 120px
+
+.TodoPlus .schedule-table small, .TaskWorkspace .schedule-table small
+    display: block
+
+.TodoPlus .schedule-table .schedule-critical, .TaskWorkspace .schedule-table .schedule-critical
+    background: var(--lf-soft)
+
+.TodoPlus .task-title, .TodoPlus .task-context button, .TodoPlus .task-blockers button, .TodoPlus .task-next button, .TodoPlus .task-open, .TodoPlus .task-expand, .TodoPlus .task-order button, .TaskWorkspace .task-title, .TaskWorkspace .task-context button, .TaskWorkspace .task-blockers button, .TaskWorkspace .task-next button, .TaskWorkspace .task-open, .TaskWorkspace .task-expand, .TaskWorkspace .task-order button
+    padding: 0
+    background: transparent
+    border: 0
+    border-radius: 3px
+
+.TodoPlus .task-title, .TaskWorkspace .task-title
+    display: block
+    width: 100%
+    font-weight: 500
+    overflow-wrap: anywhere
+
+.TodoPlus .task-done .task-title, .TaskWorkspace .task-done .task-title
+    color: var(--lf-muted)
+    text-decoration: line-through
+
+.TodoPlus .task-context, .TaskWorkspace .task-context
+    color: var(--lf-muted)
+    font-size: 11px
+    margin: 3px 0
+    overflow-wrap: anywhere
+
+.TodoPlus .task-context button, .TaskWorkspace .task-context button
+    color: var(--lf-muted)
+
+.TodoPlus .task-meta, .TaskWorkspace .task-meta
+    display: flex
+    flex-wrap: wrap
+    gap: 3px var(--lf-space-2)
+    font-size: 11px
+    color: var(--lf-muted)
+    margin-top: 3px
+
+.TodoPlus .task-next, .TaskWorkspace .task-next
+    color: var(--lf-muted)
+    font-size: 11px
+    margin-top: var(--lf-space-1)
+
+.TodoPlus .task-next button, .TaskWorkspace .task-next button
+    color: var(--lf-accent)
+
+.TodoPlus .task-overdue .task-meta, .TaskWorkspace .task-overdue .task-meta
+    color: var(--lf-danger)
+
+.TodoPlus .task-blockers, .TaskWorkspace .task-blockers
+    font-size: 12px
+    color: var(--lf-warning)
+    margin: var(--lf-space-1) 0 0
+
+.TodoPlus .task-blockers button, .TaskWorkspace .task-blockers button
+    color: var(--lf-warning)
+    text-decoration: underline
+    text-underline-offset: 2px
+
+.TodoPlus .task-expand, .TodoPlus .task-open, .TaskWorkspace .task-expand, .TaskWorkspace .task-open
+    font-size: 21px
+    color: var(--lf-muted)
+    line-height: 24px
+
+.TodoPlus .task-order, .TaskWorkspace .task-order
+    display: flex
+    flex-direction: column
+    gap: 5px
+    color: var(--lf-muted)
+
+.TodoPlus .task-composer, .TaskWorkspace .task-composer
+    display: flex
+    gap: 7px
+    padding-top: var(--lf-space-3)
+
+.TodoPlus .task-composer input, .TaskWorkspace .task-composer input
+    flex: 1
+
+.TodoPlus .recovery-row, .TaskWorkspace .recovery-row
+    display: flex
+    align-items: center
+    gap: 10px
+    padding: 9px 0
+
+.TodoPlus .recovery-row span, .TaskWorkspace .recovery-row span
+    flex: 1
+    overflow-wrap: anywhere
+
+.TodoPlus .occurrence, .TaskWorkspace .occurrence
+    margin: 10px 0
+
+.TodoPlus .occurrence summary, .TaskWorkspace .occurrence summary
+    cursor: pointer
+    color: var(--lf-muted)
+
+.TodoPlus .occurrence p, .TaskWorkspace .occurrence p
+    margin: 5px 0 5px var(--lf-space-3)
+
+.TodoPlus .linked-task, .TaskWorkspace .linked-task
+    display: block
+    margin: 5px 0
+
+.TodoPlus
+    width: 390px
+    max-width: 44vw
+    position: relative
+    margin-top: 10px
+    display: flex
+    flex-direction: column
+    gap: var(--lf-space-3)
+
+.TodoPlus .panel
+    background: var(--lf-surface)
+    border-radius: 15px
+    padding: 14px 15px
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16)
+
+.TodoPlus .panel header
+    display: flex
+    align-items: center
+    gap: 7px
+    position: relative
+
+.TodoPlus .panel-title, .TodoPlus .list-select
+    font-size: 21px
+    font-weight: 500
+    background: transparent
+    border: 0
+    padding: 0
+    flex: 1
+
+.TodoPlus .panel-title span
+    font-size: 12px
+    padding-left: 7px
+    color: var(--lf-muted)
+
+.TodoPlus .collapse-panel
+    background: transparent
+    border: 0
+    font-size: 20px
+
+.TodoPlus .panel-options
+    position: relative
+
+.TodoPlus .panel-options summary
+    list-style: none
+    cursor: pointer
+    font-size: 20px
+    padding: 0 5px
+
+.TodoPlus .panel-options summary::-webkit-details-marker
+    display: none
+
+.TodoPlus .panel-options[open]
+    position: absolute
+    right: 0
+    top: 0
+    background: var(--lf-surface)
+    z-index: 35
+    border: 1px solid var(--lf-border)
+    border-radius: 10px
+    width: 245px
+    max-width: 100%
+    padding: 10px
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14)
+
+.TodoPlus .panel-options form, .TodoPlus .panel-options label
+    display: flex
+    gap: 6px
+    margin: 6px 0
+    align-items: center
+
+.TodoPlus .panel-options input:not([type=checkbox])
+    width: 100%
+
+.TodoPlus .panel-options button
+    margin: var(--lf-space-1) 0
+    font-size: 12px
+
+.TodoPlus .task-list
+    max-height: min(28vh, 330px)
+    overflow: auto
+    margin-top: 9px
+    padding-right: var(--lf-space-1)
+    scrollbar-width: thin
+
+.TodoPlus .queue-label
+    font-size: 11px
+    font-weight: 500
+    letter-spacing: 0.08em
+    text-transform: uppercase
+    color: var(--lf-muted)
+    margin: 9px 0 0
+
+.TodoPlus .completed-today
+    color: var(--lf-muted)
+    font-size: 12px
+    margin-top: 10px
+
+.TodoPlus .completed-today summary
+    cursor: pointer
+
+.TodoPlus .quick-task
+    display: grid
+    grid-template-columns: minmax(0, 1fr) auto
+    gap: 7px
+    margin-top: var(--lf-space-3)
+
+.TodoPlus .quick-task input
+    grid-column: 1/-1
+
+.TodoPlus .quick-task select, .TodoPlus .quick-task button
+    font-size: 12px
+
+.TodoPlus .task-search
+    width: 100%
+    font-size: 12px
+    margin-top: 10px
+
+.TodoPlus .task-status
+    color: var(--lf-surface)
+    display: flex
+    align-items: center
+    justify-content: flex-end
+    gap: 10px
+    font-size: 12px
+
+.TodoPlus .task-status:empty
+    display: none
+
+.TodoPlus .task-status button
+    padding: 3px var(--lf-space-2)
+
+.TodoPlus .open-outline
+    color: var(--lf-accent)
+    background: transparent
+    border: 0
+    font-size: 11px
+    margin: 0 0 3px 35px
+    padding: 1px
+
+.TaskWorkspace
+    .workspace-header
+        display: flex
+        align-items: flex-start
+        justify-content: space-between
+        gap: var(--lf-space-3)
+
+        nav
+            display: flex
+            align-items: center
+            flex-wrap: wrap
+            gap: 6px
+            color: var(--lf-muted)
+            font-size: 12px
+
+        nav button
+            padding: 2px 0
+            border: 0
+            background: transparent
+            overflow-wrap: anywhere
+
+    .close-workspace
+        border: 0
+        padding: 0 6px
+        font-size: 25px
+        line-height: 24px
+        flex-shrink: 0
+
+    .workspace-heading
+        display: flex
+        align-items: center
+        gap: var(--lf-space-3)
+        margin: var(--lf-space-5) 0 var(--lf-space-2)
+
+        h2
+            flex: 1
+            font-size: 28px
+            line-height: 1.2
+            font-weight: 500
+            margin: 0
+            overflow-wrap: anywhere
+
+        > button:last-child
+            font-size: 12px
+            white-space: nowrap
+
+    .workspace-summary
+        display: flex
+        flex-wrap: wrap
+        gap: var(--lf-space-2) 15px
+        color: var(--lf-muted)
+        font-size: 12px
+        margin-left: 34px
+
+    .task-description
+        white-space: pre-wrap
+        overflow-wrap: anywhere
+        color: var(--lf-muted)
+        margin: var(--lf-space-5) 0
+
+    .workspace-content
+        min-height: 140px
+
+        h3
+            font-size: 13px
+            font-weight: 500
+            margin: 18px 0 var(--lf-space-2)
+
+    .workspace-subtasks
+        min-height: 70px
+        overflow-x: auto
+
+        .task-row
+            box-sizing: content-box
+            min-width: 260px
+
+    .task-editor
+        display: grid
+        grid-template-columns: repeat(2, minmax(0, 1fr))
+        gap: 14px
+        margin: 22px 0
+        padding: 18px
+        border-radius: 12px
+        background: var(--lf-soft)
+
+        label
+            display: flex
+            flex-direction: column
+            gap: 5px
+            font-size: 12px
+            min-width: 0
+
+        input, textarea, select
+            width: 100%
+
+        .span-full
+            grid-column: 1 / -1
+
+    .repeat-days
+        display: flex
+        flex-wrap: wrap
+        gap: 10px
+        border: 1px solid var(--lf-border)
+        border-radius: 7px
+
+        label
+            flex-direction: row
+            align-items: center
+
+        input
+            width: auto
+
+    .editor-actions, .workspace-actions
+        display: flex
+        flex-wrap: wrap
+        gap: var(--lf-space-2)
+
+    .workspace-actions
+        border-top: 1px solid var(--lf-border)
+        margin-top: var(--lf-space-6)
+        padding-top: 15px
+
+        button
+            font-size: 12px
+
+    .completion-confirm, .schedule-shift
+        background: var(--lf-soft)
+        border-radius: 10px
+        padding: 14px
+        margin: var(--lf-space-4) 0
+
+    .completion-preview
+        max-height: 260px
+        overflow-y: auto
+        padding-left: 22px
+
+        li
+            padding: 5px 0
+
+        small
+            display: block
+            color: var(--lf-muted)
+            font-size: 11px
+
+        button
+            margin: var(--lf-space-1) var(--lf-space-2) 0 0
+
+    .dependency-add
+        display: flex
+        gap: var(--lf-space-2)
+
+        select
+            flex: 1
+
+    .dependency-row
+        display: flex
+        align-items: center
+        gap: 10px
+        margin: 7px 0
+
+        button
+            flex: 1
+
+        span
+            color: var(--lf-muted)
+            font-size: 11px
+
+    .dependency-edge
+        display: grid
+        grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) 26px
+        gap: var(--lf-space-2)
+        align-items: center
+        margin: var(--lf-space-2) 0
+
+        button
+            overflow-wrap: anywhere
+
+        small
+            display: block
+            color: var(--lf-muted)
+            margin-top: 3px
+            font-size: 11px
+
+    .dependency-complete
+        opacity: .6
+        text-decoration: line-through
+
+    .dependency-graph
+        position: relative
+        margin: var(--lf-space-3) 0
+
+        svg
+            position: absolute
+            inset: 0
+            overflow: visible
+            color: var(--lf-muted)
+            pointer-events: none
+
+        .graph-edge
+            fill: none
+            stroke: var(--lf-muted)
+            stroke-width: 1.5
+
+        .graph-edge-active
+            stroke: var(--lf-accent)
+            stroke-width: 2
+
+        .graph-node
+            position: absolute
+            background: var(--lf-soft)
+            border-color: var(--lf-border)
+            padding: 10px var(--lf-space-3)
+
+            &[aria-pressed=true]
+                background: var(--lf-soft)
+                border-color: var(--lf-accent)
+
+            span, small
+                display: -webkit-box
+                -webkit-box-orient: vertical
+                overflow: hidden
+
+            span
+                -webkit-line-clamp: 2
+
+            small
+                -webkit-line-clamp: 1
+                font-size: 11px
+                color: var(--lf-muted)
+                margin-top: 5px
+
+        .graph-node-done span
+            text-decoration: line-through
+
+        .graph-node-canceled
+            border-style: dashed
+
+        .graph-node-dimmed
+            opacity: .45
+
+    .graph-selection
+        display: flex
+        align-items: center
+        flex-wrap: wrap
+        gap: var(--lf-space-2)
+        font-size: 12px
+        margin: 10px 0 var(--lf-space-4)
+
+        span
+            flex: 1
+            min-width: 140px
+
+        button
+            font-size: 12px
+
+    .timeline-axis
+        display: flex
+        justify-content: space-between
+        margin: 10px 0 var(--lf-space-3)
+        color: var(--lf-muted)
+        font-size: 11px
+
+    .timeline-row
+        display: grid
+        grid-template-columns: 180px minmax(0, 1fr) 140px
+        gap: var(--lf-space-3)
+        align-items: center
+        min-height: 54px
+
+        > button
+            border: 0
+            background: transparent
+            padding: 5px 0
+            overflow-wrap: anywhere
+
+        small
+            display: block
+            color: var(--lf-muted)
+            font-size: 11px
+
+    .timeline-track
+        position: relative
+        height: 28px
+        margin: 0 var(--lf-space-2)
+        background: var(--lf-soft)
+        border-radius: 4px
+
+    .timeline-today
+        position: absolute
+        width: 1px
+        height: 100%
+        background: var(--lf-muted)
+
+    .timeline-bar
+        position: absolute
+        height: 8px
+        top: 10px
+        background: var(--lf-accent)
+        border-radius: 4px
+
+    .timeline-deadline, .timeline-start
+        position: absolute
+        transform: translateX(-50%)
+        top: 3px
+        color: var(--lf-accent)
+
+    .activity-row
+        display: grid
+        grid-template-columns: 175px minmax(0, 1fr)
+        gap: 15px
+        padding: 9px 0
+        border-bottom: 1px solid var(--lf-border)
+
+        time
+            font-size: 11px
+            color: var(--lf-muted)
+
+        small
+            display: block
+            margin-top: var(--lf-space-1)
+            color: var(--lf-muted)
+
+    .schedule-warnings
+        color: var(--lf-warning)
+        font-size: 12px
+        margin-top: 18px
+
+    .schedule-shift input
+        width: 80px
+
+    .shift-preview p
+        display: flex
+        flex-wrap: wrap
+        justify-content: space-between
+        gap: 7px
+        margin: 6px 0
+
+        small span
+            display: block
+
+    .task-unavailable
+        padding: var(--lf-space-3)
+        margin-top: 15px
+        background: var(--lf-soft)
+        border-radius: 8px
+
+        p
+            margin: 0 0 var(--lf-space-2)
+
+@media (max-width: 740px)
+    .TodoPlus
+        max-width: calc(100vw - 30px)
+        width: 350px
+
+    .TaskWorkspace
+        padding: var(--lf-space-4)
+        max-width: calc(100vw - 18px)
+
+        .workspace-heading
+            flex-wrap: wrap
+
+            h2
+                font-size: 23px
+
+        .timeline-row
+            grid-template-columns: minmax(0, 1fr)
+            gap: var(--lf-space-1)
+            margin-bottom: 14px
+
+        .task-editor
+            grid-template-columns: minmax(0, 1fr)
+            padding: var(--lf-space-3)
+
+        .activity-row
+            grid-template-columns: minmax(0, 1fr)
+            gap: 3px
+
+@media (pointer: coarse)
+    .TodoPlus, .TaskWorkspace
+        button, summary
+            min-height: 36px
+
+        input, textarea
+            font-size: 16px
+
+        .task-check
+            height: 28px
+            min-height: 28px
+            margin-top: var(--lf-space-1)
+
+        .task-expand, .task-open
+            min-width: 24px
+
+// Non-modal dock: mirror the map and settings when opening from the left panel.
+.TaskWorkspace.task-map-workspace
+    position: fixed
+    z-index: 12
+    display: grid
+    grid-template-columns: 190px minmax(0, 1fr)
+    gap: var(--lf-space-2)
+    padding: 0
+    margin: 0
+    max-width: none
+    max-height: none
+    border: 0
+    border-radius: 0
+    background: transparent
+    box-shadow: none
+    overflow: hidden
+
+    &[data-direction=right]
+        grid-template-columns: minmax(0, 1fr) 190px
+
+        .workspace-settings
+            order: 2
+
+    .workspace-settings, .workspace-map-area
+        min-width: 0
+        min-height: 0
+        background: var(--lf-surface)
+        border: 1px solid var(--lf-border)
+        border-radius: 14px
+        box-shadow: 0 8px 28px rgba(0, 0, 0, .14)
+
+    .workspace-settings
+        overflow: auto
+        scrollbar-width: thin
+        padding: var(--lf-space-2)
+        font-size: 12px
+
+    .settings-heading
+        display: flex
+        justify-content: space-between
+        align-items: center
+        color: var(--lf-muted)
+        font-size: 11px
+        letter-spacing: .06em
+        text-transform: uppercase
+        margin-bottom: var(--lf-space-2)
+
+    .legacy-task-menu
+        display: grid
+        gap: var(--lf-space-2)
+        padding: var(--lf-space-2)
+        border: 1px solid rgba(0, 0, 0, .06)
+        border-radius: 12px
+        background: var(--lf-soft)
+        color: var(--lf-text)
+
+        .legacy-menu-title
+            display: grid
+            grid-template-columns: 22px minmax(0, 1fr)
+            align-items: start
+            gap: 7px
+            min-width: 0
+            padding-bottom: var(--lf-space-2)
+            border-bottom: 1px solid var(--lf-border)
+
+            .task-check
+                margin: 0
+
+            h2, small
+                display: block
+                overflow-wrap: anywhere
+
+            h2
+                font-size: 13px
+                line-height: 1.25
+                margin: 0
+
+            small
+                color: var(--lf-muted)
+                margin-top: 2px
+
+        .legacy-menu-row
+            display: grid
+            grid-template-columns: auto minmax(0, 1fr)
+            align-items: center
+            gap: 6px
+            min-width: 0
+            color: var(--lf-text)
+            font-size: 11px
+
+            input, select
+                width: 100%
+                min-width: 0
+                padding: var(--lf-space-1) 5px
+                font-size: 11px
+
+        .legacy-menu-repeat
+            display: grid
+            gap: 6px
+            color: var(--lf-text)
+            font-size: 11px
+
+        .repeat-options, .custom-days
+            display: flex
+            flex-wrap: wrap
+            gap: var(--lf-space-1)
+
+            button
+                padding: 3px 6px
+                border-radius: 999px
+                border: 1px solid rgba(0, 0, 0, .12)
+                background: transparent
+                color: var(--lf-muted)
+                font-size: 11px
+
+                &.active
+                    background: var(--lf-accent)
+                    color: var(--lf-surface)
+                    border-color: var(--lf-accent)
+
+        .custom-days button
+            padding-inline: var(--lf-space-1)
+
+        > small
+            color: var(--lf-muted)
+            font-size: 10px
+
+        .legacy-menu-edit
+            width: 100%
+            text-align: center
+
+    .workspace-header nav
+        font-size: 10px
+        gap: var(--lf-space-1)
+
+    .workspace-heading
+        flex-wrap: wrap
+        gap: 7px
+        margin: var(--lf-space-2) 0 6px
+
+        h2
+            font-size: 12px
+            line-height: 1.25
+            min-width: 0
+
+        > button:last-child
+            width: 100%
+            text-align: center
+
+    .workspace-summary
+        margin: 0
+        gap: var(--lf-space-1) 9px
+        font-size: 11px
+
+    .workspace-next, .planning-note, .task-description
+        font-size: 11px
+        margin: 10px 0
+
+    .workspace-next button
+        border: 0
+        background: transparent
+        padding: 0
+        color: var(--lf-accent)
+
+    .task-status
+        flex-wrap: wrap
+        font-size: 11px
+        margin: var(--lf-space-3) 0
+
+    .task-editor
+        display: block
+        padding: 0
+        margin: var(--lf-space-3) 0
+        background: transparent
+
+        label
+            margin: var(--lf-space-2) 0
+            font-size: 11px
+
+        .editor-actions
+            margin-top: var(--lf-space-3)
+
+        input, textarea, select
+            font-size: 12px
+
+    .settings-group
+        border-top: 1px solid var(--lf-border)
+        padding: 9px 0
+
+        summary
+            cursor: pointer
+            font-size: 12px
+            color: var(--lf-muted)
+
+        .structure-actions
+            display: grid
+            gap: 5px
+            margin-top: var(--lf-space-2)
+
+    .workspace-view-menu
+        display: grid
+        gap: 5px
+        margin: 14px 0
+        font-size: 11px
+
+    .workspace-actions
+        display: grid
+        grid-template-columns: repeat(2, minmax(0, 1fr))
+        gap: 5px
+        margin-top: var(--lf-space-1)
+        padding: 6px
+        border: 1px solid rgba(0, 0, 0, .06)
+        border-radius: 10px
+        background: var(--lf-soft)
+
+        button
+            min-width: 0
+            padding: 5px 3px
+            font-size: 10px
+            overflow-wrap: anywhere
+
+        button.danger
+            grid-column: 1 / -1
+
+    .completion-confirm, .schedule-shift
+        padding: 9px
+        font-size: 11px
+
+    .completion-preview
+        padding-left: 15px
+
+    .shift-preview p
+        display: block
+
+    .workspace-map-area
+        display: flex
+        flex-direction: column
+        overflow: hidden
+
+    .map-toolbar
+        display: flex
+        align-items: center
+        gap: var(--lf-space-2)
+        padding: var(--lf-space-2)
+        border-bottom: 1px solid var(--lf-border)
+        flex-shrink: 0
+
+        > div
+            min-width: 0
+            flex: 1
+
+        strong
+            display: block
+            font-weight: 500
+            overflow: hidden
+            text-overflow: ellipsis
+            white-space: nowrap
+            font-size: 12px
+
+        small
+            display: none
+            color: var(--lf-muted)
+            font-size: 11px
+            margin-top: 3px
+
+        > button:last-child
+            border: 0
+            background: transparent
+            font-size: 22px
+            padding: 0 6px
+
+    .workspace-content
+        flex: 1
+        min-height: 0
+        overflow: auto
+        padding: var(--lf-space-2)
+
+        &:has(.task-map-viewport)
+            display: flex
+            padding: 0
+
+    .task-map-viewport
+        width: 100%
+        flex: 1
+        min-height: 0
+        overflow: auto
+        overscroll-behavior: contain
+        scrollbar-width: thin
+        background-image: radial-gradient(var(--lf-border) .8px, transparent .8px)
+        background-size: 18px 18px
+
+    .task-map-canvas
+        position: relative
+
+    .task-map-connectors
+        position: absolute
+        inset: 0
+        pointer-events: none
+
+        path
+            stroke: var(--lf-border)
+            stroke-width: 1.5
+            fill: none
+
+    .task-map-panel
+        position: absolute
+
+        .task-row-compact
+            height: 100%
+            grid-template-columns: 10px 22px minmax(0, 1fr) 12px
+            align-items: center
+            gap: var(--lf-space-1)
+            padding: 1px 2px
+            border-radius: 3px
+            background: var(--lf-surface)
+
+            &.task-highlighted
+                background: var(--lf-soft)
+
+            .task-row-body
+                overflow: hidden
+
+            .task-title
+                font-size: 14px
+                line-height: 14px
+                min-height: 0
+                white-space: nowrap
+                overflow: hidden
+                text-overflow: ellipsis
+
+            .task-meta
+                flex-wrap: nowrap
+                gap: var(--lf-space-1)
+                margin: 0
+                font-size: 10px
+                line-height: 10px
+                white-space: nowrap
+                overflow: hidden
+
+                > *
+                    flex-shrink: 0
+
+            .task-check
+                width: 22px
+                height: 22px
+                min-height: 22px
+                min-width: 22px
+                margin: 0
+
+            .task-expand, .task-open
+                min-width: 0
+                min-height: 22px
+                font-size: 18px
+                line-height: 22px
+
+            .compact-blocker
+                color: var(--lf-warning)
+                border: 0
+                background: transparent
+                padding: 0
+                min-height: 0
+                font-size: 10px
+                line-height: 10px
+
+    .map-composer
+        display: flex
+        gap: 7px
+        padding: 6px var(--lf-space-2)
+        border-top: 1px solid var(--lf-border)
+        flex-shrink: 0
+
+        input
+            flex: 1
+            width: 0
+            font-size: 12px
+
+        button
+            font-size: 12px
+
+    .mobile-settings-toggle
+        display: none
+
+.TaskWorkspace.task-map-workspace.menu-dismissed
+    grid-template-columns: minmax(0, 1fr)
+
+    &[data-direction=right]
+        grid-template-columns: minmax(0, 1fr)
+
+    .workspace-settings
+        display: none
+
+    .mobile-settings-toggle
+        display: inline-block
+
+.TaskWorkspace.task-map-workspace[data-compact=true]
+    grid-template-columns: minmax(0, 1fr)
+    gap: var(--lf-space-2)
+
+    .workspace-settings
+        display: none
+
+    .mobile-settings-toggle
+        display: inline-block
+        font-size: 11px
+
+    &.mobile-settings-open
+        grid-template-columns: 170px minmax(0, 1fr)
+
+        &[data-direction=right]
+            grid-template-columns: minmax(0, 1fr) 170px
+
+        .workspace-settings
+            display: block
+            padding: 9px
+
+        .legacy-menu-row
+            grid-template-columns: minmax(0, 1fr)
+
+    .map-toolbar
+        padding: 9px
+
+        small
+            display: none
+
+    .map-composer
+        padding: var(--lf-space-2)
+
+@media (pointer: coarse)
+    .TaskWorkspace.task-map-workspace
+        .task-editor input, .task-editor select, .task-editor textarea, .map-composer input
+            font-size: 12px

@@ -23,7 +23,12 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXBuildFile section */
+        AF0000000000000000000001 /* MobileWeb in Resources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000002 /* MobileWeb */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+        AF0000000000000000000002 /* MobileWeb */ = {isa = PBXFileReference; lastKnownFileType = folder; path = MobileWeb; sourceTree = "<group>"; };
 		52EAEBC62FCC09B30006ACD2 /* app.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = app.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		52EAEBD52FCC09BD0006ACD2 /* appTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = appTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		52EAEBDF2FCC09BD0006ACD2 /* appUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = appUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -76,6 +81,7 @@
 			isa = PBXGroup;
 			children = (
 				52EAEBC82FCC09B30006ACD2 /* app */,
+                AF0000000000000000000002 /* MobileWeb */,
 				52EAEBD82FCC09BD0006ACD2 /* appTests */,
 				52EAEBE22FCC09BD0006ACD2 /* appUITests */,
 				52EAEBC72FCC09B30006ACD2 /* Products */,
@@ -99,7 +105,8 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 52EAEBE92FCC09BD0006ACD2 /* Build configuration list for PBXNativeTarget "app" */;
 			buildPhases = (
-				52EAEBC22FCC09B30006ACD2 /* Sources */,
+				AF0000000000000000000003 /* Verify mobile bundle */,
+                52EAEBC22FCC09B30006ACD2 /* Sources */,
 				52EAEBC32FCC09B30006ACD2 /* Frameworks */,
 				52EAEBC42FCC09B30006ACD2 /* Resources */,
 			);
@@ -212,6 +219,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+                AF0000000000000000000001 /* MobileWeb in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -230,6 +238,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+        AF0000000000000000000003 /* Verify mobile bundle */ = {
+            isa = PBXShellScriptBuildPhase;
+            alwaysOutOfDate = 1;
+            buildActionMask = 2147483647;
+            files = ();
+            inputPaths = ();
+            outputPaths = ();
+            name = "Verify mobile bundle";
+            runOnlyForDeploymentPostprocessing = 0;
+            shellPath = /bin/sh;
+            shellScript = "cd \"$SRCROOT/..\"\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\nif ! command -v node >/dev/null; then echo \"error: Node.js is required to verify the bundled interface. Install Node and run npm ci && npm run build:mobile from the repository root.\"; exit 1; fi\nnode mobile-web/scripts/verify-bundle.cjs\n";
+        };
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		52EAEBC22FCC09B30006ACD2 /* Sources */ = {
@@ -306,7 +329,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -367,7 +390,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;

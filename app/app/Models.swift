@@ -334,14 +334,21 @@ struct NotesData: Codable, Equatable {
     var items: [NoteNode] = []
     var selectedNoteId: String?
     var currentFolderId: String?
-
+    var extraFields: [String: JSONValue] = [:]
     init() {}
-
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        items = try container.decodeIfPresent([NoteNode].self, forKey: .items) ?? []
-        selectedNoteId = try container.decodeIfPresent(String.self, forKey: .selectedNoteId)
-        currentFolderId = try container.decodeIfPresent(String.self, forKey: .currentFolderId)
+        let c = try decoder.container(keyedBy: OpenCodingKey.self)
+        items = try c.decodeIfPresent([NoteNode].self, forKey: OpenCodingKey("items")) ?? []
+        selectedNoteId = try c.decodeIfPresent(String.self, forKey: OpenCodingKey("selectedNoteId"))
+        currentFolderId = try c.decodeIfPresent(String.self, forKey: OpenCodingKey("currentFolderId"))
+        for key in c.allKeys where !["items", "selectedNoteId", "currentFolderId"].contains(key.stringValue) { extraFields[key.stringValue] = try c.decode(JSONValue.self, forKey: key) }
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: OpenCodingKey.self)
+        for (key, value) in extraFields { try c.encode(value, forKey: OpenCodingKey(key)) }
+        try c.encode(items, forKey: OpenCodingKey("items"))
+        try c.encodeIfPresent(selectedNoteId, forKey: OpenCodingKey("selectedNoteId"))
+        try c.encodeIfPresent(currentFolderId, forKey: OpenCodingKey("currentFolderId"))
     }
 }
 
@@ -353,20 +360,48 @@ struct NoteNode: Codable, Identifiable, Equatable {
     var contents: String?
     var deleted: Bool?
     var deletedAt: String?
+    var extraFields: [String: JSONValue] = [:]
+    init(id: String, type: String, name: String, parentId: String? = nil, contents: String? = nil, deleted: Bool? = nil, deletedAt: String? = nil) {
+        self.id = id; self.type = type; self.name = name; self.parentId = parentId; self.contents = contents; self.deleted = deleted; self.deletedAt = deletedAt
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: OpenCodingKey.self)
+        id = try c.decode(String.self, forKey: OpenCodingKey("id"))
+        type = try c.decode(String.self, forKey: OpenCodingKey("type"))
+        name = try c.decodeIfPresent(String.self, forKey: OpenCodingKey("name")) ?? "Untitled Note"
+        parentId = try c.decodeIfPresent(String.self, forKey: OpenCodingKey("parentId"))
+        contents = try c.decodeIfPresent(String.self, forKey: OpenCodingKey("contents"))
+        deleted = try c.decodeIfPresent(Bool.self, forKey: OpenCodingKey("deleted"))
+        deletedAt = try c.decodeIfPresent(String.self, forKey: OpenCodingKey("deletedAt"))
+        for key in c.allKeys where !["id", "type", "name", "parentId", "contents", "deleted", "deletedAt"].contains(key.stringValue) { extraFields[key.stringValue] = try c.decode(JSONValue.self, forKey: key) }
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: OpenCodingKey.self)
+        for (key, value) in extraFields { try c.encode(value, forKey: OpenCodingKey(key)) }
+        try c.encode(id, forKey: OpenCodingKey("id")); try c.encode(type, forKey: OpenCodingKey("type")); try c.encode(name, forKey: OpenCodingKey("name"))
+        // The shared note tree represents root parentage explicitly as null.
+        try c.encode(parentId, forKey: OpenCodingKey("parentId"))
+        try c.encodeIfPresent(contents, forKey: OpenCodingKey("contents")); try c.encodeIfPresent(deleted, forKey: OpenCodingKey("deleted")); try c.encodeIfPresent(deletedAt, forKey: OpenCodingKey("deletedAt"))
+    }
 }
 
 struct PlanData: Codable, Equatable {
     var plans: [String: String] = [:]
     var activeDate: String?
     var selectedDate: String?
-
+    var extraFields: [String: JSONValue] = [:]
     init() {}
-
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        plans = try container.decodeIfPresent([String: String].self, forKey: .plans) ?? [:]
-        activeDate = try container.decodeIfPresent(String.self, forKey: .activeDate)
-        selectedDate = try container.decodeIfPresent(String.self, forKey: .selectedDate)
+        let c = try decoder.container(keyedBy: OpenCodingKey.self)
+        plans = try c.decodeIfPresent([String: String].self, forKey: OpenCodingKey("plans")) ?? [:]
+        activeDate = try c.decodeIfPresent(String.self, forKey: OpenCodingKey("activeDate"))
+        selectedDate = try c.decodeIfPresent(String.self, forKey: OpenCodingKey("selectedDate"))
+        for key in c.allKeys where !["plans", "activeDate", "selectedDate"].contains(key.stringValue) { extraFields[key.stringValue] = try c.decode(JSONValue.self, forKey: key) }
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: OpenCodingKey.self)
+        for (key, value) in extraFields { try c.encode(value, forKey: OpenCodingKey(key)) }
+        try c.encode(plans, forKey: OpenCodingKey("plans")); try c.encodeIfPresent(activeDate, forKey: OpenCodingKey("activeDate")); try c.encodeIfPresent(selectedDate, forKey: OpenCodingKey("selectedDate"))
     }
 }
 

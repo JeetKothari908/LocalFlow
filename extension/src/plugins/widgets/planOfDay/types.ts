@@ -1,9 +1,2 @@
-export type Data = {
-  plans: Record<string, string>;
-  activeDate?: string;
-  selectedDate?: string;
-};
-
-export const defaultData: Data = {
-  plans: {},
-};
+// Shared by the extension and iOS interface.
+export * from "../../../../../packages/core/src/planOfDay/types";

@@ -1,0 +1,97 @@
+@use '../../packages/ui/src/tokens';
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; background: var(--lf-background); color: var(--lf-text); font-family: var(--lf-font); }
+body { font-size: 16px; -webkit-text-size-adjust: 100%; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button, select, input { min-height: 44px; }
+button { border: 1px solid var(--lf-border); border-radius: 10px; background: var(--lf-surface); padding: 10px 14px; cursor: pointer; }
+button:disabled { opacity: .5; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid var(--lf-accent); outline-offset: 2px; }
+input, textarea, select { background: var(--lf-surface); border: 1px solid var(--lf-border); border-radius: 10px; padding: 10px; }
+[hidden] { display: none !important; }
+.app-header { display: flex; align-items: center; justify-content: space-between; padding: 24px 20px 8px; gap: 12px; }
+.eyebrow { color: var(--lf-muted); font-size: 11px; font-weight: 700; letter-spacing: .2em; }
+h1 { margin: 4px 0; font-size: 32px; letter-spacing: -.035em; }
+h2 { font-size: 23px; }
+.header-actions { display: flex; gap: 6px; button { padding: 10px; border: 0; background: transparent; } }
+.sync-status { padding: 0 20px 16px; font-size: 12px; color: var(--lf-muted); }
+.mobile-error, .review-banner { margin: 8px 16px; padding: 12px; border-radius: 12px; background: var(--lf-soft); overflow-wrap: anywhere; }
+.mobile-error { color: var(--lf-danger); }
+.review-banner { display: flex; flex-wrap: wrap; gap: 8px; }
+.screens { max-width: 1100px; margin: auto; padding: 0 16px 24px; }
+.mobile-app { min-height: var(--visible-height, 100dvh); }
+.preview-tabs { position: sticky; bottom: 0; display: flex; background: var(--lf-surface); border-top: 1px solid var(--lf-border); padding: 6px; gap: 4px; button { flex: 1; text-transform: capitalize; border: 0; } [aria-current] { color: var(--lf-accent); background: var(--lf-soft); } }
+.boot-state { padding: 32px; }
+.mobile-modal { position: fixed; inset: 0; height: var(--visible-height, 100dvh); z-index: 300; background: var(--lf-background); padding: 20px; overflow: auto; header { display: flex; justify-content: space-between; align-items: center; } article, .restore-review { background: var(--lf-surface); border: 1px solid var(--lf-border); padding: 16px; border-radius: 12px; margin: 12px 0; } select { display: block; width: 100%; } pre { overflow: auto; max-height: 40vh; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; } button { margin: 4px; } }
+.mobile-app :is(.TodoPlus, .TaskWorkspace, .Notes, .PlanOfDay) { font-family: var(--lf-font); color: var(--lf-text); font-size: 16px; width: 100%; max-width: none; text-shadow: none; }
+.mobile-app :is(.TodoPlus, .TaskWorkspace) :is(button, input, select, textarea) { font-size: 16px; min-height: 44px; color: var(--lf-text); background: var(--lf-surface); border-color: var(--lf-border); }
+.mobile-app :is(.TodoPlus, .TaskWorkspace) :is(.empty-state, .planning-note, .task-meta, .timeline-legend) { color: var(--lf-muted); font-size: 13px; }
+.mobile-app .TodoPlus { background: transparent; padding: 0; box-shadow: none; border: 0; max-height: none; overflow: visible;
+  .task-list { max-height: none; overflow: visible; }
+  .task-status { color: var(--lf-muted); grid-column: 1 / -1; }
+  .panel-options[open] { background: var(--lf-surface); border-color: var(--lf-border); }
+  .panel-options summary { min-height: 44px; min-width: 44px; display: flex; align-items: center; justify-content: center; }
+  .panel-title, .queue-label, .completed-today { color: var(--lf-text); }
+  .dashboard-list > section { border: 1px solid var(--lf-border); border-radius: var(--lf-radius); background: var(--lf-surface); padding: 16px; margin-bottom: 16px; }
+  .task-row { grid-template-columns: 0 44px minmax(0, 1fr) 44px; gap: 6px; padding: 10px 0; border-color: var(--lf-border); }
+  .task-check { width: 44px; height: 44px; min-height: 44px; margin: 0; }
+  .task-title { font-size: 16px; line-height: 1.4; }
+  .task-composer { display: flex; flex-wrap: wrap; gap: 8px; input { flex: 1 1 160px; } select { flex: 1 1 140px; } }
+  .task-search { width: 100%; }
+}
+.mobile-app .TaskWorkspace[data-layout=mobile] {
+  position: fixed; top: var(--viewport-top, 0px); left: 0; right: 0; bottom: auto; width: 100%; height: var(--visible-height, 100dvh); max-height: none; z-index: 100; border: 0; border-radius: 0; padding: 0; display: flex !important; background: var(--lf-background); box-shadow: none;
+  .workspace-map-area { width: 100%; flex: 1; min-width: 0; }
+  .map-toolbar { padding: 12px; border-color: var(--lf-border); strong { font-size: 17px; white-space: normal; } }
+  .mobile-settings-toggle { display: block; font-size: 16px; }
+  .workspace-settings { display: none; }
+  &.mobile-settings-open:not(.menu-dismissed) .workspace-settings { display: block; position: absolute; inset: 64px 0 0; width: 100%; z-index: 5; overflow: auto; padding: 20px; background: var(--lf-surface); box-shadow: 0 -10px 32px #0002; border-radius: 20px 20px 0 0; }
+  .settings-heading { position: sticky; top: -20px; background: var(--lf-surface); z-index: 1; padding: 12px 0; display: flex; justify-content: space-between; font-size: 20px; }
+  .legacy-menu-row, .task-editor { font-size: 16px; }
+  .workspace-actions, .structure-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .workspace-content { padding: 16px; }
+  .mobile-view-controls { display: flex; align-items: end; gap: 12px; padding: 0 12px 12px; label { flex: 1; font-size: 12px; color: var(--lf-muted); } select { width: 100%; display: block; } }
+  .task-map-panel .task-row-compact { grid-template-columns: 44px 44px minmax(0, 1fr) 44px; background: var(--lf-surface); border: 1px solid var(--lf-border); border-radius: 12px; padding: 4px; gap: 3px;
+    .task-title { font-size: 15px; line-height: 20px; min-height: 44px; white-space: normal; }
+    .task-expand, .task-open { min-height: 44px; min-width: 44px; }
+    .task-check { width: 44px; height: 44px; min-height: 44px; }
+    .task-meta { display: none; }
+  }
+  .task-map-viewport { background-color: var(--lf-background); background-image: radial-gradient(var(--lf-border) 1px, transparent 1px); }
+  .map-composer { padding: 12px; border-color: var(--lf-border); background: var(--lf-surface); }
+  .task-row:not(.task-row-compact) { grid-template-columns: 44px 44px minmax(0, 1fr) 44px; }
+  .task-title { white-space: normal; }
+  .task-row-actions button, .structure-actions button { font-size: 14px; }
+  .timeline-row { min-width: 550px; }
+  .timeline-view { overflow-x: auto; }
+  .task-highlighted, .map-selected .task-row-compact { background: var(--lf-soft); outline-color: var(--lf-accent); }
+  .task-editor { display: flex; flex-direction: column; input, select, textarea { width: 100%; } }
+}
+.mobile-app .Notes { .panel { height: calc(var(--visible-height, 100dvh) - 160px); min-height: 260px; max-height: none; background: var(--lf-surface); box-shadow: none; border: 1px solid var(--lf-border); } .toolbar button, .editor-toolbar button, .item button { min-height: 44px; height: auto; min-width: 44px; color: var(--lf-text); } .toolbar button:first-child { color: var(--lf-text); } .path { overflow-x: auto; flex-shrink: 0; button { white-space: nowrap; } } textarea { color: var(--lf-text); font-size: 17px; background: transparent; } .note-title { font-size: 26px; } .items { overflow-y: auto; } .item { border-color: var(--lf-border); } .empty { color: var(--lf-muted); } }
+.mobile-app .PlanOfDay { margin: 0; z-index: auto; .panel { background: var(--lf-surface); box-shadow: none; border: 1px solid var(--lf-border); padding: 20px; } .header { flex-wrap: wrap; gap: 12px; } .title { color: var(--lf-text); flex-wrap: wrap; font-size: 20px; } textarea { width: 100%; min-height: calc(var(--visible-height, 100dvh) - 280px); color: var(--lf-text); font-size: 17px; background: transparent; } .calendar { position: fixed; top: 170px; bottom: auto; left: 16px; right: 16px; width: auto; max-width: 370px; background: var(--lf-surface); color: var(--lf-text); z-index: 20; padding: 12px; } .calendar button { min-height: 44px; color: var(--lf-text); background: var(--lf-soft); } .date-picker { color: var(--lf-text); background: var(--lf-soft); } }
+@media (min-width: 760px) { .mobile-app .TodoPlus { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; } .mobile-app .TaskWorkspace[data-layout=mobile] { .workspace-settings { max-width: 430px; } &.mobile-settings-open:not(.menu-dismissed) .workspace-settings { left: auto; } } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+
+.mobile-modal { margin: 0; border: 0; max-width: none; max-height: none; width: 100%; color: var(--lf-text); top: var(--viewport-top, 0px); }
+.mobile-modal::backdrop { background: #0007; }
+.mobile-app :is(.TodoPlus, .TaskWorkspace) button.primary,
+.mobile-app :is(.TodoPlus, .TaskWorkspace) .task-check[aria-pressed=true] { color: var(--lf-on-accent); background: var(--lf-accent); }
+.mobile-app .TodoPlus .dashboard-list { display: block; min-width: 0; }
+.mobile-quick-add { position: sticky; top: 0; z-index: 30; display: flex; gap: var(--lf-space-2); padding: var(--lf-space-3) 0; margin-bottom: var(--lf-space-3); background: var(--lf-background); input { flex: 1; min-width: 0; } button { flex-shrink: 0; } }
+.mobile-app .Notes.has-selection .directory { display: none; }
+.mobile-app .TodoPlus .quick-task { display: flex; flex-wrap: wrap; gap: var(--lf-space-2); input { flex: 1 1 160px; } select { flex: 1 1 140px; } }
+.mobile-app .TaskWorkspace .task-open, .mobile-app .TaskWorkspace .task-expand, .mobile-app .TodoPlus .task-open { width: 44px; min-width: 44px; min-height: 44px; padding: 0; }
+@media (min-width: 760px) {
+  .screens { max-width: 1600px; }
+  .mobile-app .TodoPlus { display: block; }
+  .mobile-app .TodoPlus:not(.task-map-open) .dashboard-list { display: grid; grid-template-columns: 1fr 1fr; gap: var(--lf-space-5); }
+  .mobile-app .TodoPlus .mobile-quick-add, .mobile-app .TodoPlus .task-status, .mobile-app .TodoPlus .task-error { grid-column: 1 / -1; }
+  .mobile-app .TodoPlus.task-map-open { display: grid; grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); gap: var(--lf-space-5); align-items: start; }
+  .mobile-app .TodoPlus.task-map-open .dashboard-list { max-height: calc(var(--visible-height, 100dvh) - 160px); overflow: auto; padding-right: var(--lf-space-2); }
+  .mobile-app .workspace-portal:not(:empty) { position: sticky; top: var(--lf-space-4); height: calc(var(--visible-height, 100dvh) - 160px); min-height: 360px; }
+  .mobile-app .TaskWorkspace[data-layout=mobile] { position: absolute; inset: 0; height: 100%; width: 100%; z-index: 1; border: 1px solid var(--lf-border); border-radius: var(--lf-radius); overflow: hidden; }
+  .mobile-app .Notes .panel { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); }
+  .mobile-app .Notes .directory, .mobile-app .Notes.has-selection .directory { display: flex; grid-column: 1; grid-row: 1; border-right: 1px solid var(--lf-border); }
+  .mobile-app .Notes .editor { grid-column: 2; grid-row: 1; }
+  .mobile-app .Notes .editor-toolbar button:first-child { visibility: hidden; }
+}

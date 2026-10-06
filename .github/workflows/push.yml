@@ -11,11 +11,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: extension/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-        working-directory: extension
       - run: npm test
-        working-directory: extension
   build:
     name: Build ${{ matrix.build_target }}
     runs-on: ubuntu-latest
@@ -31,9 +29,8 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: extension/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-        working-directory: extension
       - run: npm run build:${{ matrix.build_target }}
         working-directory: extension
         env:
@@ -43,3 +40,69 @@ jobs:
         with:
           name: extension-${{ matrix.build_target }}
           path: extension/dist/${{ matrix.build_target }}
+
+  mobile:
+    name: Build mobile interface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:mobile
+      - run: npm run verify:mobile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-web
+          path: app/MobileWeb/
+  ios:
+    name: iOS build and native tests
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:mobile
+      - name: Select an available iPhone simulator
+        run: |
+          xcrun simctl list devices available -j > /tmp/localflow-simulators.json
+          python3 - <<'PY'
+          import json, os
+          with open('/tmp/localflow-simulators.json') as f:
+              devices = json.load(f)['devices']
+          phones = [d for runtime, rows in devices.items() if 'iOS-26-2' in runtime for d in rows if d.get('isAvailable') and 'iPhone' in d['name']]
+          tablets = [d for runtime, rows in devices.items() if 'iOS-26-2' in runtime for d in rows if d.get('isAvailable') and 'iPad' in d['name']]
+          if not phones:
+              raise SystemExit('An iPhone simulator compatible with the app deployment target is required.')
+          if not tablets:
+              raise SystemExit('An iPad simulator is required to validate the wide layout.')
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write('LOCALFLOW_SIMULATOR=' + phones[0]['udid'] + '\n')
+              f.write('LOCALFLOW_IPAD=' + tablets[0]['udid'] + '\n')
+          PY
+      - name: Run iOS tests
+        run: xcodebuild -project app/app.xcodeproj -scheme app -destination "platform=iOS Simulator,id=$LOCALFLOW_SIMULATOR" -resultBundlePath ios-results CODE_SIGNING_ALLOWED=NO test
+      - name: Run iPad workspace workflows
+        run: xcodebuild -project app/app.xcodeproj -scheme app -destination "platform=iOS Simulator,id=$LOCALFLOW_IPAD" -only-testing:appUITests/MobileWorkspaceUITests -resultBundlePath ipad-results CODE_SIGNING_ALLOWED=NO test
+      - name: Archive the beta interface without signing
+        run: xcodebuild -project app/app.xcodeproj -scheme app -configuration Release -destination 'generic/platform=iOS' -archivePath LocalFlow-beta.xcarchive CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS=LOCALFLOW_SHARED_UI archive
+      - name: Verify assets inside the finished archive
+        run: node mobile-web/scripts/verify-bundle.cjs LocalFlow-beta.xcarchive/Products/Applications/app.app/MobileWeb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-beta-archive
+          path: LocalFlow-beta.xcarchive
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-test-results
+          path: |
+            ios-results.xcresult
+            ipad-results.xcresult

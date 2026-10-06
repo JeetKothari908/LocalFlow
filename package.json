@@ -1,0 +1,17 @@
+{
+  "name": "localflow",
+  "private": true,
+  "workspaces": [
+    "extension",
+    "packages/*",
+    "mobile-web"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace extension -- --runInBand && npm run test --workspace @localflow/mobile && node mobile-web/scripts/verify-theme.cjs",
+    "build:mobile": "npm run build --workspace @localflow/mobile",
+    "dev:mobile": "npm run dev --workspace @localflow/mobile",
+    "build:extension": "npm run build:chromium --workspace extension",
+    "verify:mobile": "node mobile-web/scripts/verify-bundle.cjs",
+    "verify:theme": "node mobile-web/scripts/verify-theme.cjs"
+  }
+}

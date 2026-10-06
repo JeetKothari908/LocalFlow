@@ -8,7 +8,7 @@
 
 ## Usage
 
-Run these commands from `extension` after installing dependencies with `npm install`.
+Install all workspace dependencies with `npm ci` from the repository root. Then run these commands from `extension`:
 
 - `npm run dev[:target]` Local development server
 - `npm run build[:target]` Production build
@@ -69,11 +69,11 @@ SYNC_SERVER_URL=https://raspberrypi.tail2db278.ts.net
 SYNC_AUTH_TOKEN=jfiweokgerhotrwhtr
 ```
 
-Build Chromium from `extension`:
+Build Chromium from the repository root:
 
 ```powershell
-npm install
-npm run build:chromium
+npm ci
+npm run build:extension
 ```
 
 Load `extension/dist/chromium` as an unpacked extension from `chrome://extensions`.

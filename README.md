@@ -14,7 +14,9 @@ The project has these main parts:
 |---|---|
 | `extension/` | React 18, TypeScript, Sass, and Webpack browser extension/PWA. This is the main LocalFlow new-tab dashboard and contains the widgets for todos, notes, plan of the day, backgrounds, search, time, quotes, and other LocalFlow-derived features. |
 | `server/` | FastAPI and SQLite key-value sync API. It stores extension/iOS data under a shared store path, supports bearer-token auth, and is intended to run privately on a Raspberry Pi behind Tailscale Serve. |
-| `app/` | SwiftUI iOS client for LocalFlow todos, notes, plan of day, and local notification groups. It reads/writes the same synced records as the extension. |
+| `app/` | SwiftUI iOS host with bundled shared React screens for Tasks, Notes, and Plan, plus native Alerts, storage, and sync. |
+| `packages/` | Shared TypeScript task rules, React feature components, and platform contracts used by the extension and mobile UI. |
+| `mobile-web/` | Mobile React entry point, native bridge adapter, offline preview, and bundled asset build. |
 | `docs/` | Extension-focused docs, contributing notes, changelog, and translation instructions. |
 | `setup.md` | Operational runbook for setting up, restarting, and verifying the Raspberry Pi sync stack. |
 
@@ -44,7 +46,7 @@ The sync server exposes:
 
 ## Setup
 
-All setup instructions live in [setup.md](setup.md), including:
+Start with [setup.md](setup.md). The [mobile implementation guide](docs/mobile-app.md) covers workspace builds, the native bridge, and remaining device validation. Setup includes:
 
 - Building and loading the browser extension.
 - Running the local FastAPI sync server.
@@ -56,11 +58,11 @@ All setup instructions live in [setup.md](setup.md), including:
 
 | File | Purpose |
 |---|---|
-| `extension/src/plugins/widgets/todo-plus/TaskDashboard.tsx` | Daily task dashboard, project lists, search, recovery, and workspace navigation. |
-| `extension/src/plugins/widgets/todo-plus/TaskWorkspace.tsx` | Recursive task workspace, metadata, outline editing, schedule shifts, and planning views. |
-| `extension/src/plugins/widgets/todo/tasks.ts` | Task migration, hierarchy, dependencies, completion, trash, recurrence, and planning behavior. |
-| `extension/src/plugins/widgets/notes/Notes.tsx` | Notes widget UI. |
-| `extension/src/plugins/widgets/planOfDay/PlanOfDay.tsx` | Plan-of-day widget UI. |
+| `packages/ui/src/tasks/TaskDashboard.tsx` | Daily task dashboard, project lists, search, recovery, and workspace navigation. |
+| `packages/ui/src/tasks/TaskWorkspace.tsx` | Recursive task workspace, metadata, outline editing, schedule shifts, and planning views. |
+| `packages/core/src/tasks/tasks.ts` | Task migration, hierarchy, dependencies, completion, trash, recurrence, and planning behavior. |
+| `packages/ui/src/notes/Notes.tsx` | Notes widget UI. |
+| `packages/ui/src/planOfDay/PlanOfDay.tsx` | Plan-of-day widget UI. |
 | `extension/src/lib/db/storage.ts` | Local storage and remote sync plumbing. |
 | `extension/src/db/state.ts` | Default extension database state and sync startup. |
 | `server/app.py` | FastAPI sync API and SQLite persistence. |
@@ -87,6 +89,8 @@ You can delete local extension data by resetting settings in the extension or un
 
 ## More Docs
 
+- [Mobile implementation, building, and validation](docs/mobile-app.md)
+- [Mobile overhaul proposal](docs/mobile-app-overhaul-proposal.md)
 - [Recursive tasks, migration, sync recovery, and validation](docs/tasks.md)
 - [Raspberry Pi sync setup and recovery](setup.md)
 - [Sync server notes](server/README.md)

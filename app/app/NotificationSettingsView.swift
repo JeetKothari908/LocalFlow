@@ -13,7 +13,7 @@ struct NotificationSettingsView: View {
                     Text("Status")
                     Spacer()
                     Text(permissionText)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(LocalFlowTheme.muted)
                 }
 
                 Button {
@@ -26,9 +26,10 @@ struct NotificationSettingsView: View {
                     Text("Pending")
                     Spacer()
                     Text("\(notificationStore.pendingCount)")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(LocalFlowTheme.muted)
                 }
-            }
+            }.listRowBackground(LocalFlowTheme.surface)
+            .listRowInsets(EdgeInsets(top: LocalFlowTheme.rowPadding, leading: LocalFlowTheme.rowInset, bottom: LocalFlowTheme.rowPadding, trailing: LocalFlowTheme.rowInset))
 
             Section {
                 Button {
@@ -42,7 +43,8 @@ struct NotificationSettingsView: View {
                 } label: {
                     Label("Cancel Todo Notifications", systemImage: "bell.slash")
                 }
-            }
+            }.listRowBackground(LocalFlowTheme.surface)
+            .listRowInsets(EdgeInsets(top: LocalFlowTheme.rowPadding, leading: LocalFlowTheme.rowInset, bottom: LocalFlowTheme.rowPadding, trailing: LocalFlowTheme.rowInset))
 
             Section("Groups") {
                 ForEach(notificationStore.groups) { group in
@@ -66,7 +68,7 @@ struct NotificationSettingsView: View {
                         } label: {
                             Label("Duplicate", systemImage: "doc.on.doc")
                         }
-                        .tint(.blue)
+                        .tint(.accentColor)
                     }
                 }
 
@@ -75,17 +77,26 @@ struct NotificationSettingsView: View {
                 } label: {
                     Label("Add Group", systemImage: "plus")
                 }
-            }
+            }.listRowBackground(LocalFlowTheme.surface)
+            .listRowInsets(EdgeInsets(top: LocalFlowTheme.rowPadding, leading: LocalFlowTheme.rowInset, bottom: LocalFlowTheme.rowPadding, trailing: LocalFlowTheme.rowInset))
 
             Section("Status") {
                 Text(notificationStore.status)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LocalFlowTheme.muted)
                 if let errorMessage = notificationStore.errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(.red)
                 }
-            }
+            }.listRowBackground(LocalFlowTheme.surface)
+            .listRowInsets(EdgeInsets(top: LocalFlowTheme.rowPadding, leading: LocalFlowTheme.rowInset, bottom: LocalFlowTheme.rowPadding, trailing: LocalFlowTheme.rowInset))
         }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(LocalFlowTheme.background)
+        .foregroundStyle(LocalFlowTheme.text)
+        .font(.body)
+        .environment(\.defaultMinListRowHeight, LocalFlowTheme.minimumTarget)
+        .listRowSpacing(LocalFlowTheme.rowPadding)
         .navigationTitle("Notifications")
         .toolbar {
             SyncToolbar()
@@ -147,11 +158,11 @@ private struct NotificationGroupRow: View {
 
             Text("\(group.filter.rawValue) • \(matches.count) match\(matches.count == 1 ? "" : "es")")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LocalFlowTheme.muted)
 
             Text(scheduleSummary)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LocalFlowTheme.muted)
         }
         .foregroundStyle(.primary)
     }
@@ -323,7 +334,7 @@ private struct NotificationGroupEditorView: View {
                     let capped = Array(previewTodos.prefix(group.maxTasks))
                     if capped.isEmpty {
                         Text("No todos match this group right now.")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(LocalFlowTheme.muted)
                     } else {
                         ForEach(capped) { todo in
                             VStack(alignment: .leading, spacing: 4) {
@@ -331,7 +342,7 @@ private struct NotificationGroupEditorView: View {
                                 if let dueDate = Self.displayDue(todo) {
                                     Text(dueDate)
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(LocalFlowTheme.muted)
                                 }
                             }
                         }
@@ -427,17 +438,17 @@ private struct SpecificTodoPicker: View {
             HStack {
                 Text("Specific Todos")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LocalFlowTheme.muted)
                 Spacer()
                 Text("\(selectedIds.count) selected")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LocalFlowTheme.muted)
             }
 
             if sortedTodos.isEmpty {
                 Text("No synced todos available.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LocalFlowTheme.muted)
             } else {
                 ForEach(sortedTodos) { todo in
                     Button {
@@ -452,7 +463,7 @@ private struct SpecificTodoPicker: View {
                                 if let dueDate = displayDue(todo) {
                                     Text(dueDate)
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(LocalFlowTheme.muted)
                                 }
                             }
                             Spacer()

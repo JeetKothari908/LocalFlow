@@ -2,6 +2,15 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: SyncStore
+    @AppStorage("mobile.useSharedInterface") private var useSharedInterface = true
+    var body: some View {
+        if MobileInterfaceAvailability.enabled && useSharedInterface { MobileShell(store: store) }
+        else { LegacyContentView() }
+    }
+}
+
+struct LegacyContentView: View {
+    @EnvironmentObject private var store: SyncStore
     @State private var selectedTab = 0
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var notifications: TodoNotificationStore

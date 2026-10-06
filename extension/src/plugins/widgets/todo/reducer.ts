@@ -14,11 +14,8 @@ type Todo = {
 
 export type State = Todo[];
 
-export type Repeat =
-  | { type: "daily" }
-  | { type: "weekly"; days?: number[] }
-  | { type: "custom"; days: number[] }
-  | { type: "monthly"; day?: number };
+import { Repeat } from "../../../../../packages/core/src/tasks/repeat";
+export type { Repeat } from "../../../../../packages/core/src/tasks/repeat";
 
 export function reducer(state: State, action: Action) {
   switch (action.type) {

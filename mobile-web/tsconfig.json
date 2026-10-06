@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "jsx": "react",
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "lib": [
+      "esnext",
+      "dom"
+    ],
+    "skipLibCheck": true,
+    "types": [
+      "react",
+      "react-dom",
+      "jest"
+    ],
+    "rootDir": ".."
+  },
+  "include": [
+    "src",
+    "../packages",
+    "../extension/src/@types/feather-icons.d.ts",
+    "../extension/src/@types/date-fns-tz.d.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts"
+  ]
+}

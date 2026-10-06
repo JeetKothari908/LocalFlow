@@ -1,3 +1,6 @@
 {
-  "rootDir": "dist/test"
+  "rootDir": "dist/test",
+  "testMatch": [
+    "<rootDir>/extension/src/**/*.test.js"
+  ]
 }

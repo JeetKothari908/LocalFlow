@@ -9,9 +9,8 @@ Use this when installing or rebuilding the Chrome/Chromium extension locally.
 1. Install dependencies and build the Chromium bundle from the repo root:
 
 ```powershell
-cd extension
-npm install
-npm run build:chromium
+npm ci
+npm run build:extension
 ```
 
 2. Load the extension:
@@ -80,20 +79,28 @@ The health check should return `{"ok":true}`. The config endpoint should return 
 
 ## iOS App
 
-Open the Xcode project:
+Install Node.js 22 and build the bundled interface from the repository root before opening Xcode:
+
+```powershell
+npm ci
+npm run build:mobile
+npm run verify:mobile
+```
+
+Open the Xcode project on a Mac with Xcode 26.2 or a compatible newer version (the project targets iOS 26.2):
 
 ```text
 app/app.xcodeproj
 ```
 
-The LocalFlow app uses SwiftUI and `SyncStore` to talk to the same sync API as the extension. Its main tabs are:
+The LocalFlow app hosts shared React screens in SwiftUI. Native `SyncStore` owns persistence and talks to the same sync API as the extension. Its main tabs are:
 
-- Todos
+- Tasks
 - Notes
 - Plan
 - Alerts
 
-Sync settings are editable in the app through the gear button. Build and run it from Xcode on a Mac.
+Sync settings are editable through the gear button; new installations start offline until a server is configured. Build and run the shared `app` scheme. Rebuild the mobile bundle whenever shared UI sources change; the Xcode build rejects missing or stale assets. See [the mobile guide](docs/mobile-app.md) for preview commands, tests, recovery, and the fallback interface.
 
 ## Raspberry Pi From Scratch
 
@@ -286,9 +293,9 @@ curl.exe "https://raspberrypi.tail2db278.ts.net/health"
 5. From the repo folder, install dependencies and build:
 
 ```powershell
-cd "PATH\TO\extension"
-npm install
-npm run build:chromium
+cd "PATH\TO\LocalFlow"
+npm ci
+npm run build:extension
 ```
 
 6. Load the extension:

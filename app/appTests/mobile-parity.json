@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 2,
+  "show": 3,
+  "customLists": [{ "id": "work", "name": "Work" }],
+  "items": [
+    { "id": "project", "contents": "Ship a release", "completed": false, "status": "todo", "listId": "work", "dueDate": "2026-10-06", "futureTaskField": { "preserve": true } },
+    { "id": "design", "contents": "Review design", "completed": false, "status": "todo", "parentTaskId": "project", "dueDate": "2026-10-05", "dueTime": "10:00", "estimatedMinutes": 20, "order": 0 },
+    { "id": "build", "contents": "Build release", "completed": false, "status": "todo", "parentTaskId": "project", "dueDate": "2026-10-05", "dueTime": "11:00", "estimatedMinutes": 30, "order": 1 }
+  ],
+  "dependencies": [{ "id": "design-before-build", "prerequisiteTaskId": "design", "dependentTaskId": "build" }],
+  "occurrences": [],
+  "activity": [],
+  "futureDocumentField": "preserve"
+}

@@ -60,7 +60,7 @@ const config = {
       },
       {
         test: /\.(ts|tsx)$/,
-        include: path.resolve("./src"),
+        include: [path.resolve("./src"), path.resolve("../packages")],
         loader: "ts-loader",
       },
     ],
